@@ -25,7 +25,6 @@ body {
   display: grid;
   grid-template-columns: 260px 1fr;
   min-height: 100vh;
-  transition: grid-template-columns 160ms ease;
 }
 .layout > .content {
   min-width: 0;
@@ -154,44 +153,6 @@ html.sidebar-collapsed .brand::before {
   display: flex;
   gap: 6px;
   flex: none;
-}
-
-/* --- Sunum modu (menuyu tamamen gizle) --- */
-.present-exit {
-  display: none;
-  position: fixed;
-  left: 16px;
-  bottom: 16px;
-  z-index: 70;
-  border: none;
-  border-radius: 999px;
-  padding: 10px 18px;
-  background: var(--navy);
-  color: #f8fafc;
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-  box-shadow: 0 8px 26px rgba(15, 23, 42, 0.35);
-}
-
-.present-exit:hover {
-  background: #1f3d57;
-}
-
-html.presentation-mode .layout {
-  grid-template-columns: 1fr;
-}
-html.presentation-mode .content {
-  grid-column: 1 / -1;
-}
-
-html.presentation-mode .sidebar,
-html.presentation-mode .mobile-topbar {
-  display: none;
-}
-
-html.presentation-mode .present-exit {
-  display: block;
 }
 
 .nav {
@@ -2382,7 +2343,7 @@ pre {
 @media print {
   .sidebar, .mobile-topbar, .stock-search, .stock-filters, .heatmap-bar,
   .analytics-row, .expiring-strip, .block-tabs, .unit-panel, .unit-panel-backdrop,
-  .cell-tip, .present-exit {
+  .cell-tip {
     display: none !important;
   }
   .layout { grid-template-columns: 1fr !important; }
@@ -3864,7 +3825,7 @@ body[data-stock-mode="demand"] .unit-cell.sold { background: #dfe4e9; color: #64
 .user-group-card, .lead-group, .lp-panel {
   border-radius: 10px;
 }
-.button, .present-exit {
+.button {
   border-radius: 7px;
 }
 input[type="text"], input[type="date"], input[type="datetime-local"],
@@ -3889,6 +3850,8 @@ select, textarea {
   --line: #d9dee5;
   --ink: #1c2430;
   --muted: #657081;
+  --chip: #f1f3f6;
+  --chip-hover: #e6eaef;
 }
 body { background: var(--bg); }
 
@@ -3899,10 +3862,10 @@ body { background: var(--bg); }
   border-radius: 6px;
   box-shadow: none;
   border: 1px solid var(--line);
-  background: #ffffff;
+  background: var(--panel);
 }
 .stat-card.highlight {
-  background: #ffffff;
+  background: var(--panel);
   border: 1px solid var(--accent);
   border-top: 1px solid var(--accent);
 }
@@ -3915,25 +3878,25 @@ body { background: var(--bg); }
 
 /* Sidebar: acik zemin, koyu metin — klasik yonetim paneli */
 .sidebar {
-  background: #ffffff;
+  background: var(--panel);
   color: var(--ink);
   border-right: 1px solid var(--line);
 }
 .mobile-topbar {
-  background: #ffffff;
+  background: var(--panel);
   color: var(--ink);
   border-bottom: 1px solid var(--line);
 }
 .topbar-nav-btn { color: var(--ink); }
 .brand, .brand-full, .brand-mini { color: var(--ink); }
 .sidebar-toggle {
-  background: #f1f3f6;
+  background: var(--chip);
   color: #5a6472;
 }
-.sidebar-toggle:hover { background: #e6eaef; color: #1c2430; }
+.sidebar-toggle:hover { background: var(--chip-hover); color: #1c2430; }
 .sidebar-toggle:focus-visible { outline-color: var(--accent); }
 .nav a { color: #485362; }
-.nav a:hover { background: #f2f4f7; color: #111826; }
+.nav a:hover { background: var(--chip); color: #111826; }
 .nav a.active {
   background: rgba(0, 166, 80, 0.1);
   color: #0a7a3d;
@@ -3942,10 +3905,66 @@ body { background: var(--bg); }
 .nav a:focus-visible { outline-color: var(--accent); }
 .nav-group-label { color: #9aa3b0; }
 html.sidebar-collapsed .nav-group-label { background: #dfe4ea; }
-.nav-badge { background: #eef1f4; color: #404b5a; }
+.nav-badge { background: var(--chip); color: #404b5a; }
 .nav-badge.danger { background: #fdeaea; color: #b42323; }
 .sidebar-footer { color: #8a93a1; border-top: 1px solid var(--line); }
 .sidebar-footer strong { color: #4a5462; }
 html.sidebar-collapsed .nav a.active {
   box-shadow: inset 0 0 0 1.5px rgba(0, 166, 80, 0.45);
 }
+
+
+/* ---- Gece/Gündüz anahtarı ---- */
+.theme-toggle {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 60;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.theme-toggle:hover { border-color: var(--accent); }
+
+/* ---- GECE TEMASI ---- */
+html.theme-dark {
+  --bg: #12161d;
+  --panel: #1b212b;
+  --line: #2d3742;
+  --ink: #e8edf4;
+  --muted: #97a3b4;
+  --accent-soft: rgba(0, 210, 100, 0.14);
+  --chip: #242c37;
+  --chip-hover: #2d3742;
+}
+html.theme-dark body { background: var(--bg); color: var(--ink); }
+html.theme-dark .sidebar,
+html.theme-dark .mobile-topbar { background: #171d26; }
+html.theme-dark .brand, html.theme-dark .brand-full,
+html.theme-dark .brand-mini { color: var(--ink); }
+html.theme-dark .sidebar-toggle { color: #aab6c5; }
+html.theme-dark .sidebar-toggle:hover { color: var(--ink); }
+html.theme-dark .nav a { color: #aab6c5; }
+html.theme-dark .nav a:hover { background: #212a35; color: #fff; }
+html.theme-dark .nav a.active { background: rgba(0, 210, 100, 0.14); color: #43e08a; }
+html.theme-dark .nav-group-label { color: #5d6979; }
+html.theme-dark .nav-badge { color: #c3cdda; }
+html.theme-dark .nav-badge.danger { background: rgba(214, 69, 69, 0.2); color: #ff9c9c; }
+html.theme-dark .sidebar-footer strong { color: #c3cdda; }
+html.theme-dark input[type="text"], html.theme-dark input[type="date"],
+html.theme-dark input[type="datetime-local"], html.theme-dark select,
+html.theme-dark textarea {
+  background: #141a22;
+  border-color: var(--line);
+  color: var(--ink);
+}
+html.theme-dark .stat-card.highlight { border-color: rgba(0, 210, 100, 0.55); }
+html.theme-dark .button.secondary { background: var(--chip); color: var(--ink); }

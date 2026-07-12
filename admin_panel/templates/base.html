@@ -6,7 +6,7 @@
     <title>{% block title %}{{ panel_project }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}?v={{ css_version }}">
     {# İlk render'da titreme olmasın diye daraltma durumu daha body parse edilmeden basılır. #}
-    <script>try{if(localStorage.getItem("admin.sidebar.collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed")}catch(e){}</script>
+    <script>try{if(localStorage.getItem("admin.sidebar.collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed");if(localStorage.getItem("admin.theme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
   </head>
   <body>
     <header class="mobile-topbar">
@@ -17,9 +17,7 @@
       <span class="mobile-title">{{ panel_project }}</span>
     </header>
     <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
-    <button type="button" class="present-exit" id="present-exit" title="Sunum modundan çık (Esc)">
-      Sunum modundan çık
-    </button>
+    <button type="button" class="theme-toggle" id="theme-toggle" title="Gece/Gündüz modu">🌙</button>
     <div class="layout">
       <aside class="sidebar">
         <div class="sidebar-top">
@@ -27,11 +25,6 @@
             <span class="brand-full">{{ panel_project }}</span><span class="brand-mini">{{ panel_project[:2] | upper }}</span>
           </a>
           <div class="sidebar-top-actions">
-            <button type="button" class="sidebar-toggle" id="present-btn"
-                    aria-label="Sunum modu" title="Sunum modu — menüyü gizle (Ctrl+Shift+P)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h20v12H2zM8 20h8M12 16v4"/></svg>
-            </button>
             <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-expanded="true"
                     aria-label="Menüyü daralt/genişlet" title="Menüyü daralt/genişlet (Ctrl+B)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -143,24 +136,19 @@
         }
       });
 
-      // Sunum modu: menüyü tamamen gizler (müşteriye ekran gösterirken).
-      // Kalıcı DEĞİL — sayfa geçişinde kapanır, iş mutfağı gizli kalmasın diye.
-      var presentBtn = document.getElementById("present-btn");
-      var presentExit = document.getElementById("present-exit");
-      function setPresentation(on) {
-        root.classList.toggle("presentation-mode", on);
+      // Gece/Gündüz: sag ust anahtar, tercih localStorage'ta.
+      var themeBtn = document.getElementById("theme-toggle");
+      function applyTheme(dark) {
+        root.classList.toggle("theme-dark", dark);
+        if (themeBtn) themeBtn.textContent = dark ? "☀️" : "🌙";
+        try { localStorage.setItem("admin.theme", dark ? "dark" : "light"); } catch (e) {}
       }
-      if (presentBtn) presentBtn.addEventListener("click", function () { setPresentation(true); });
-      if (presentExit) presentExit.addEventListener("click", function () { setPresentation(false); });
-      document.addEventListener("keydown", function (e) {
-        if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "p" || e.key === "P" || e.key === "P".toLowerCase())) {
-          e.preventDefault();
-          setPresentation(!root.classList.contains("presentation-mode"));
-        }
-        if (e.key === "Escape" && root.classList.contains("presentation-mode")) {
-          setPresentation(false);
-        }
-      });
+      if (themeBtn) {
+        themeBtn.textContent = root.classList.contains("theme-dark") ? "☀️" : "🌙";
+        themeBtn.addEventListener("click", function () {
+          applyTheme(!root.classList.contains("theme-dark"));
+        });
+      }
 
       // Dar ekran: off-canvas menü. Durum kalıcı değil — her sayfa kapalı başlar.
       var openBtn = document.getElementById("nav-open");
