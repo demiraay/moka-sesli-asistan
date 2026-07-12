@@ -106,7 +106,11 @@ def test_create_payment_link(manager):
 
 
 def test_monthly_summary(manager):
-    summary = manager.monthly_summary("M-1001", month="2026-07")
+    # Aylar calisma zamaninda bugune sabitlenir: son eleman = icinde
+    # bulunulan ay. Hardcoded "2026-07" Agustos'ta kirilirdi (tur-2 hakem #5).
+    from datetime import date
+    current_month = date.today().strftime("%Y-%m")
+    summary = manager.monthly_summary("M-1001", month=current_month)
     assert summary["gross_try"] == 182000
     assert summary["rate_pct"] == 2.49
     assert summary["commission_try"] == round(182000 * 2.49 / 100)

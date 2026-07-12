@@ -40,11 +40,12 @@ class AgentOrchestrator:
     # ------------------------------------------------------------ formatting
 
     def _format_try_amount(self, amount: float) -> str:
-        # Savunmaci: LLM/veri katmani string dondurse bile cokme (hakem bulgusu #2).
-        try:
-            amount = int(round(float(str(amount).replace(",", "."))))
-        except (TypeError, ValueError):
+        # Savunmaci: LLM/veri katmani string dondurse bile cokme; "1.250" gibi
+        # binlik ayracli metinler de dogru cozulur (tur-2 hakem bulgusu #1).
+        parsed = self._parse_amount_text(amount)
+        if parsed is None:
             return f"{amount} TL"
+        amount = int(round(parsed))
         if amount >= 1_000_000:
             millions = amount // 1_000_000
             thousands = (amount % 1_000_000) // 1_000
@@ -511,10 +512,9 @@ class AgentOrchestrator:
             if value in (None, "", [], {}):
                 continue
             if key == "amount_mentioned_try":
-                try:
-                    value = self._format_try_amount(float(value))
-                except (TypeError, ValueError):
-                    pass
+                parsed = self._parse_amount_text(value)
+                if parsed is not None:
+                    value = self._format_try_amount(parsed)
             lines.append(f"- {label}: {value}")
 
         for change in card.get("changed") or []:

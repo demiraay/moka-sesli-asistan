@@ -87,22 +87,19 @@
                         "ai_summary": lead.ai_summary,
                         "manual_notes": lead.manual_notes,
                         "budget_max_try": lead.budget_max_try,
-                        "preferred_flat_type": lead.preferred_flat_type,
                         "urgency": lead.urgency,
                         "handoff_required": lead.handoff_required,
                         "conversation_count": lead.conversation_count,
                         "channels": lead.channels,
                         "last_contact_at": lead.last_contact_at,
-                        "matches": lead.matches
+                        "merchant_id": lead.merchant_id
                       } | tojson | e }}'>
                 <span class="temp-badge {{ lead.temperature }}">{{ temp_label(lead.temperature) }}</span>
                 <span class="lead-row-main">
                   <span class="lead-row-name">{{ lead.name or lead.user_id }}</span>
                   <span class="lead-row-chips">
-                    {% if lead.preferred_flat_type %}<span class="lead-chip">{{ lead.preferred_flat_type }}</span>{% endif %}
                     {% if lead.budget_max_try %}<span class="lead-chip">≤ {{ lead.budget_max_try | tl }}</span>{% endif %}
                     {% if lead.urgency == 'high' %}<span class="lead-chip urgent">acil</span>{% endif %}
-                    {% if lead.match_count %}<span class="lead-chip match">{{ lead.match_count }} eslesme</span>{% endif %}
                   </span>
                 </span>
                 <span class="lead-row-meta">
@@ -119,7 +116,7 @@
       <p class="lead-no-result" id="lead-no-result" hidden>Aramaya/filtreye uyan aday yok.</p>
     </div>
   {% else %}
-    <div class="empty-state">Henuz lead yok — WhatsApp'tan ya da test sohbetinden konuşmalar basladikca burasi dolacak.</div>
+    <div class="empty-state">Henüz kayıt yok — WhatsApp'tan ya da test sohbetinden konuşmalar başladıkça burası dolacak.</div>
   {% endif %}
 
   <div class="lead-panel-backdrop" id="lead-backdrop"></div>
@@ -152,11 +149,6 @@
       <span class="lp-label">Aşama</span>
       <div class="lp-stage-buttons" id="lp-stage-buttons"></div>
       <button type="button" class="suggestion-chip" id="lp-suggestion" hidden></button>
-    </div>
-
-    <div class="lp-section" id="lp-matches-wrap" hidden>
-      <span class="lp-label">Eslesen daireler</span>
-      <div class="lp-matches" id="lp-matches"></div>
     </div>
 
     <div class="lp-section" id="lp-notes-wrap" hidden>
@@ -271,8 +263,7 @@
     const facts = document.getElementById("lp-facts");
     facts.innerHTML = "";
     const factList = [
-      ["Tip", lead.preferred_flat_type],
-      ["Butce", lead.budget_max_try ? "≤ " + tl(lead.budget_max_try) : null],
+      ["İşletme", lead.merchant_id],
       ["Aciliyet", lead.urgency === "high" ? "Yüksek" : (lead.urgency === "low" ? "Düşük" : lead.urgency)],
       ["Kanal", (lead.channels || []).filter(Boolean).join(", ")],
     ];
@@ -287,27 +278,12 @@
     renderStageButtons(lead);
     const suggestion = document.getElementById("lp-suggestion");
     if (lead.suggested_stage && lead.suggested_stage !== lead.stage) {
-      suggestion.textContent = "AI onerisi: " + STAGE_LABELS[lead.suggested_stage] + " →";
+      suggestion.textContent = "AI önerisi: " + STAGE_LABELS[lead.suggested_stage] + " →";
       suggestion.hidden = false;
       suggestion.onclick = () => changeStage(lead.suggested_stage);
     } else suggestion.hidden = true;
 
-    const matchesWrap = document.getElementById("lp-matches-wrap");
-    const matches = lead.matches || [];
-    if (matches.length) {
-      const box = document.getElementById("lp-matches");
-      box.innerHTML = "";
-      matches.forEach((m) => {
-        const a = document.createElement("a");
-        a.className = "lp-match";
-        a.href = "/admin/listings/" + m.inventory_id;
-        a.innerHTML = '<strong>' + m.block_id + '-' + m.door_number + '</strong> · ' + m.flat_label
-          + ' <span class="lp-match-price">' + (m.price_short || "") + '</span>'
-          + '<span class="lp-match-reasons">' + (m.reasons || []).join(" · ") + '</span>';
-        box.appendChild(a);
-      });
-      matchesWrap.hidden = false;
-    } else matchesWrap.hidden = true;
+    // (emlak "eslesen daireler" blogu Moka domaininde kaldirildi)
 
     const notesWrap = document.getElementById("lp-notes-wrap");
     if (lead.manual_notes) {

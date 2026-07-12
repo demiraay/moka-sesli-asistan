@@ -9,7 +9,7 @@
 <div class="chat-panel">
   <div class="chat-toolbar">
     <span class="muted-line">Kanal: panel &middot; Kullanıcı: panel-test &middot; Konuşma "Konuşmalar" sayfasina da kaydedilir.</span>
-    <button type="button" class="button secondary" id="chat-reset">Sohbeti Sifirla</button>
+    <button type="button" class="button secondary" id="chat-reset">Sohbeti Sıfırla</button>
   </div>
 
   <div class="chat-messages" id="chat-messages">
@@ -94,13 +94,13 @@
   });
 
   resetBtn.addEventListener("click", async () => {
-    if (!confirm("Sohbet sifirlansin mi? Hafiza bastan baslar.")) return;
+    if (!confirm("Sohbet sıfırlansın mı? Hafıza baştan başlar.")) return;
     try {
       await fetch("{{ url_for('chat_reset') }}", { method: "POST" });
       messagesEl.innerHTML = "";
-      addBubble("Sohbet sifirlandi. Yeni bir konuşma basladi.", "agent pending");
+      addBubble("Sohbet sıfırlandı. Yeni bir konuşma başladı.", "agent pending");
     } catch (error) {
-      addBubble("Sifirlama basarisiz: " + error.message, "agent error");
+      addBubble("Sıfırlama başarısız: " + error.message, "agent error");
     }
     input.focus();
   });

@@ -201,12 +201,25 @@ def test_string_amount_payment_link_does_not_crash(orchestrator):
 
 
 def test_broken_tool_args_degrade_gracefully(orchestrator):
-    """Dispatch güvenlik ağı: bozuk argüman 500 değil, özürlü fact üretir."""
+    """Coercion 'bin iki yüz'ü None'a düşürür → normal arama akışı SÜRER
+    (aksaklık fact'i üretilmez, işlem listesi döner)."""
     result = _turn(orchestrator, "u-ref3", "işlem bak",
                    "find_transaction", {"amount_try": "bin iki yüz"})
     facts = " ".join(result["context"]["message_facts"])
-    # coercion 'bin iki yüz'ü None'a düşürür → normal işlem arama akışı çalışır
-    assert result["agent_response"]  # cevap üretildi, çökmedi
+    assert "aksaklık" not in facts, "coercion çalışsaydı güvenlik ağına düşmezdi"
+    assert result["context"]["transactions"], "tutar filtresiz arama işlem bulmalıydı"
+
+
+def test_dispatch_safety_net_catches_handler_crash(orchestrator, monkeypatch):
+    """Handler gerçekten patlarsa: 500 yok, özürlü fact + cevap var."""
+    def boom(*args, **kwargs):
+        raise RuntimeError("kasıtlı patlama")
+    monkeypatch.setattr(orchestrator, "_handle_find_transaction", boom)
+    result = _turn(orchestrator, "u-ref4", "işlem bak",
+                   "find_transaction", {"amount_try": 1250})
+    facts = " ".join(result["context"]["message_facts"])
+    assert "aksaklık" in facts
+    assert result["agent_response"]
 
 
 def test_turkish_capital_i_kb_match(orchestrator):
