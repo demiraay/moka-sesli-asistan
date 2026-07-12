@@ -10,6 +10,7 @@ from core.briefing import generate_briefing
 from core.orchestrator import AgentOrchestrator
 from core.payment_plan import build_payment_plan
 from whatsapp.app import register_whatsapp_routes
+from admin_panel.call_api import register_call_routes
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -836,5 +837,6 @@ def create_app(
         )
 
     register_whatsapp_routes(app, orchestrator_instance=active_orchestrator)
+    register_call_routes(app, active_orchestrator)
 
     return app

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moka Sesli Asistan — Arama</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='call.css') }}?v={{ css_version }}">
+</head>
+<body class="mode-{{ mode }}">
+  <main class="call-shell">
+
+    <!-- Sol: telefon ekrani -->
+    <section class="phone-pane">
+      {% if mode == 'outbound' %}
+      <div class="outbound-banner">📞 Giden arama — uyuyan işletme kampanyası</div>
+      {% endif %}
+
+      <header class="call-header">
+        <div class="brand">Moka <span>Sesli Asistan</span></div>
+        <div class="merchant-chip" id="merchant-chip" hidden>
+          <span class="dot"></span>
+          <span id="merchant-label"></span>
+        </div>
+      </header>
+
+      <div class="stage">
+        <div class="avatar-wrap" id="avatar">
+          <div class="ring ring-a"></div>
+          <div class="ring ring-b"></div>
+          <div class="avatar-core">
+            <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M12 3a3.5 3.5 0 0 0-3.5 3.5v5a3.5 3.5 0 0 0 7 0v-5A3.5 3.5 0 0 0 12 3Z"/>
+              <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/>
+              <path d="M12 18v3"/>
+            </svg>
+          </div>
+          <div class="wave" id="wave" hidden>
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <h1 class="agent-name">Ada</h1>
+        <p class="state-label" id="state-label">Aramayı başlatmak için dokunun</p>
+        <p class="call-timer" id="call-timer" hidden>00:00</p>
+      </div>
+
+      <!-- Arama oncesi kurulum -->
+      <div class="setup" id="setup">
+        <label for="merchant-select">Arayan işletme (hat kimliği)</label>
+        <select id="merchant-select">
+          {% for m in merchants %}
+          <option value="{{ m.merchant_id }}" {% if m.merchant_id == merchant_id %}selected{% endif %}>
+            {{ m.business_name }} — {{ m.owner_name }}
+          </option>
+          {% endfor %}
+        </select>
+        <button class="btn-start" id="btn-start">
+          {% if mode == 'outbound' %}AI Aramayı Başlatsın{% else %}Aramayı Başlat{% endif %}
+        </button>
+        <p class="hint">🎧 En iyi deneyim için kulaklık önerilir.</p>
+      </div>
+
+      <!-- Arama sirasi kontrolleri -->
+      <div class="controls" id="controls" hidden>
+        <button class="btn-interrupt" id="btn-interrupt" hidden>⏸ Durdur ve konuş</button>
+        <button class="btn-end" id="btn-end" title="Aramayı bitir">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
+            <path d="M21.7 15.4l-3.2-1.3a1.4 1.4 0 0 0-1.5.3l-1.4 1.4a14.7 14.7 0 0 1-7.4-7.4L9.6 7a1.4 1.4 0 0 0 .3-1.5L8.6 2.3A1.4 1.4 0 0 0 7.2 1.5 5.7 5.7 0 0 0 2 7.2 16.8 16.8 0 0 0 16.8 22a5.7 5.7 0 0 0 5.7-5.2 1.4 1.4 0 0 0-.8-1.4z" transform="rotate(135 12 12)"/>
+          </svg>
+        </button>
+        <label class="text-toggle"><input type="checkbox" id="text-mode-toggle"> Yazarak test</label>
+      </div>
+
+      <form class="text-input" id="text-input" hidden>
+        <input type="text" id="text-field" placeholder="Mesaj yazın (mikrofonsuz test)..." autocomplete="off">
+        <button type="submit">Gönder</button>
+      </form>
+
+      <div class="handoff-note" id="handoff-note" hidden>
+        ☎️ Müşteri temsilcisine aktarılıyor — görüşme özeti panele düştü.
+      </div>
+    </section>
+
+    <!-- Sag: canli transkript -->
+    <aside class="transcript-pane">
+      <header>
+        <h2>Canlı Transkript</h2>
+        <label class="latency-toggle"><input type="checkbox" id="latency-toggle"> Gecikme detayı</label>
+      </header>
+      <div class="transcript" id="transcript"></div>
+    </aside>
+  </main>
+
+  <script>
+    window.CALL_CONFIG = {
+      mode: {{ mode | tojson }},
+      merchantId: {{ merchant_id | tojson }},
+    };
+  </script>
+  <script src="{{ url_for('static', filename='call.js') }}?v={{ css_version }}"></script>
+</body>
+</html>

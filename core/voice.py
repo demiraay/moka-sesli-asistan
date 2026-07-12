@@ -8,8 +8,6 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-import whisper
-
 from core.config import Config
 
 if TYPE_CHECKING:
@@ -17,6 +15,9 @@ if TYPE_CHECKING:
 
 
 class WhisperTranscriber:
+    """Lokal whisper STT (fallback). torch/whisper importu tembeldir:
+    Groq STT yolundayken agir import maliyeti odenmez."""
+
     _loaded_models: dict[tuple[str, str], Any] = {}
 
     def __init__(self, config: Optional[Config] = None):
@@ -29,6 +30,8 @@ class WhisperTranscriber:
             )
 
     def _get_model(self) -> Any:
+        import whisper  # lazy: torch yuku sadece gercekten gerekince
+
         model_name = self.config.whisper_model
         device = self.config.whisper_device or "cpu"
         cache_key = (model_name, device)
@@ -54,7 +57,98 @@ class WhisperTranscriber:
             "language": result.get("language") or target_language,
             "segments": result.get("segments", []),
             "source_audio_path": str(audio_file),
+            "engine": "whisper-local",
         }
+
+
+class GroqWhisperTranscriber:
+    """Groq'un Whisper API'si (whisper-large-v3-turbo): ucretsiz tier, ~0.5s.
+
+    MediaRecorder'in webm/opus ciktisini dogrudan kabul eder — ffmpeg gerekmez.
+    """
+
+    MODEL = "whisper-large-v3-turbo"
+
+    def __init__(self, config: Optional[Config] = None):
+        self.config = config or Config()
+
+    def is_configured(self) -> bool:
+        return bool(self.config.groq_api_key)
+
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+        audio_file = Path(audio_path)
+        if not audio_file.exists():
+            raise FileNotFoundError(f"Ses dosyasi bulunamadi: {audio_file}")
+        if not self.config.groq_api_key:
+            raise RuntimeError("GROQ_API_KEY .env icinde tanimli olmali.")
+
+        boundary = uuid.uuid4().hex
+        target_language = language or self.config.whisper_language or "tr"
+
+        parts: list[bytes] = []
+
+        def add_field(name: str, value: str) -> None:
+            parts.append(
+                (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").encode("utf-8")
+            )
+
+        add_field("model", self.MODEL)
+        add_field("language", target_language)
+        add_field("response_format", "json")
+        add_field("temperature", "0")
+        parts.append(
+            (
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
+                f"filename=\"{audio_file.name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+            ).encode("utf-8")
+        )
+        parts.append(audio_file.read_bytes())
+        parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+        body = b"".join(parts)
+
+        url = f"{self.config.groq_base_url.rstrip('/')}/audio/transcriptions"
+        request = urllib.request.Request(
+            url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {self.config.groq_api_key}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"Groq STT istegi basarisiz oldu: {detail}") from error
+        except urllib.error.URLError as error:
+            raise RuntimeError(f"Groq STT baglantisi kurulamadi: {error}") from error
+
+        return {
+            "text": str(result.get("text", "")).strip(),
+            "language": target_language,
+            "segments": [],
+            "source_audio_path": str(audio_file),
+            "engine": "groq-whisper",
+        }
+
+
+class CompositeTranscriber:
+    """Groq STT varsa onu kullanir; hata/eksik anahtar durumunda lokal whisper'a duser."""
+
+    def __init__(self, config: Optional[Config] = None):
+        self.config = config or Config()
+        self.groq = GroqWhisperTranscriber(self.config)
+        self.local = WhisperTranscriber(self.config)
+
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+        if self.groq.is_configured():
+            try:
+                return self.groq.transcribe(audio_path, language=language)
+            except Exception as error:
+                print(f"Groq STT fallback: {error}")
+        return self.local.transcribe(audio_path, language=language)
 
 
 class ElevenLabsSynthesizer:
@@ -119,11 +213,11 @@ class VoiceTurnProcessor:
     def __init__(
         self,
         orchestrator: "AgentOrchestrator",
-        transcriber: Optional[WhisperTranscriber] = None,
+        transcriber: Optional[Any] = None,
         synthesizer: Optional[ElevenLabsSynthesizer] = None,
     ):
         self.orchestrator = orchestrator
-        self.transcriber = transcriber or WhisperTranscriber(orchestrator.config)
+        self.transcriber = transcriber or CompositeTranscriber(orchestrator.config)
         self.synthesizer = synthesizer or ElevenLabsSynthesizer(orchestrator.config)
 
     def process_audio_turn(
