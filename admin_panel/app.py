@@ -3,7 +3,7 @@ import secrets
 import time
 from pathlib import Path
 
-from flask import Flask, Response, flash, redirect, render_template, request, send_from_directory, url_for
+from flask import Flask, Response, abort, flash, redirect, render_template, request, send_from_directory, url_for
 
 from core.admin_store import AdminStore
 from core.briefing import generate_briefing
@@ -117,7 +117,8 @@ def create_app(
         password = os.getenv("ADMIN_PASSWORD", "").strip()
         if not password:
             return None
-        if not (request.path == "/" or request.path.startswith("/admin")):
+        if not (request.path == "/" or request.path.startswith("/admin")
+                or request.path.startswith("/call")):
             return None
         auth = request.authorization
         if auth and auth.type == "basic" and auth.password == password:
@@ -215,13 +216,13 @@ def create_app(
         buffer = io.StringIO()
         writer = csv.writer(buffer)
         writer.writerow([
-            "user_id", "isim", "asama", "sicaklik", "skor", "tercih_tip",
-            "butce_max_try", "handoff_bekliyor", "oturum_sayisi", "son_temas",
+            "user_id", "isim", "asama", "sicaklik", "skor", "konu",
+            "isletme_id", "handoff_bekliyor", "oturum_sayisi", "son_temas",
         ])
         for lead in admin_store.get_leads():
             writer.writerow([
                 lead["user_id"], lead.get("name") or "", lead["stage"], lead["temperature"],
-                lead["score"], lead.get("preferred_flat_type") or "", lead.get("budget_max_try") or "",
+                lead["score"], (lead.get("ai_summary") or "")[:80], lead.get("merchant_id") or "",
                 "evet" if lead.get("handoff_required") else "hayir",
                 lead.get("conversation_count") or 0, lead.get("last_contact_at") or "",
             ])
@@ -364,7 +365,10 @@ def create_app(
     @app.route("/admin/users/<path:user_id>/conversations")
     def user_conversations(user_id: str):
         filters = _conversation_filters_from_request()
-        group = admin_store.get_user_conversations(user_id, filters=filters)
+        try:
+            group = admin_store.get_user_conversations(user_id, filters=filters)
+        except KeyError:
+            abort(404)
         ai_notes = admin_store.get_user_ai_notes(user_id)
 
         live_turns = []
@@ -412,7 +416,10 @@ def create_app(
 
     @app.route("/admin/conversations/<session_id>")
     def conversation_detail(session_id: str):
-        payload = admin_store.get_conversation(session_id)
+        try:
+            payload = admin_store.get_conversation(session_id)
+        except KeyError:
+            abort(404)
         return render_template(
             "conversation_detail.html",
             session=payload["session"],

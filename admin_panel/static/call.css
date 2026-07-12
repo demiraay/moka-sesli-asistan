@@ -338,3 +338,7 @@ body {
   from { transform: translateY(6px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* Hakem bulgusu #3: author display:flex kurallari UA [hidden]'i eziyordu —
+   gizlenen her oge gorunur kaliyordu. */
+[hidden] { display: none !important; }

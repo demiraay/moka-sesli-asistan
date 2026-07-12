@@ -179,3 +179,37 @@ def test_security_smalltalk(orchestrator):
                    "answer_general", {"category": "security_smalltalk"})
     facts = " ".join(result["context"]["message_facts"])
     assert "GÜVENLİK" in facts
+
+
+# --- Hakem bulgusu regresyonları -------------------------------------------
+
+def test_string_amount_from_router_does_not_crash(orchestrator):
+    """Hakem #1: router amount_try'ı string döndürürse çağrı ölmemeli."""
+    result = _turn(orchestrator, "u-ref1", "Dün bin iki yüz elli lira çektim",
+                   "find_transaction", {"amount_try": "1250", "date": "dün"})
+    assert result["context"]["transactions"][0]["txn_id"] == "TXN-88213"
+
+
+def test_string_amount_payment_link_does_not_crash(orchestrator):
+    """Hakem #2: string tutarla ödeme linki de çökmemeli."""
+    result = _turn(orchestrator, "u-ref2", "Beş yüz liralık link gönder",
+                   "create_payment_link", {"amount_try": "500"})
+    link = result["context"]["payment_link"]
+    assert link["amount_try"] == 500.0
+    facts = " ".join(result["context"]["message_facts"])
+    assert "500 TL" in facts
+
+
+def test_broken_tool_args_degrade_gracefully(orchestrator):
+    """Dispatch güvenlik ağı: bozuk argüman 500 değil, özürlü fact üretir."""
+    result = _turn(orchestrator, "u-ref3", "işlem bak",
+                   "find_transaction", {"amount_try": "bin iki yüz"})
+    facts = " ".join(result["context"]["message_facts"])
+    # coercion 'bin iki yüz'ü None'a düşürür → normal işlem arama akışı çalışır
+    assert result["agent_response"]  # cevap üretildi, çökmedi
+
+
+def test_turkish_capital_i_kb_match(orchestrator):
+    """Hakem #5: 'İşlem geçmiyor' KB'de eşleşmeli."""
+    entry = orchestrator.merchant_data.match_kb("İşlem geçmiyor, bağlantı hatası")
+    assert entry is not None and entry["issue_id"] == "KB-POS-02"

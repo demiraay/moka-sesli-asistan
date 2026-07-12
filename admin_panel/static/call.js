@@ -84,7 +84,7 @@
     if (next === "speaking") el.avatar.parentElement.classList.add("state-speaking");
     el.wave.hidden = next !== "speaking";
     el.stateLabel.textContent = STATE_LABELS[next] || "";
-    el.btnInterrupt.hidden = next !== "speaking";
+    el.btnInterrupt.hidden = next !== "speaking" || !stream;
   }
 
   // --- transkript ---
@@ -311,6 +311,7 @@
 
   function handleTurnResponse(data, opts) {
     opts = opts || {};
+    if (state === "ended") return;  // kapatilan cagriya gec gelen yanit yok sayilir
     if (data.error) {
       addSysNote("⚠ " + data.error);
       setState("listening");
@@ -438,7 +439,16 @@
   el.textForm.addEventListener("submit", function (evt) {
     evt.preventDefault();
     const text = el.textField.value.trim();
-    if (!text || !callId) return;
+    if (!text || !callId || state === "thinking") return;  // cift gonderim guard
+    // VAD'in baslattigi bir kayit varsa iptal et: text turu esnasinda
+    // arka planda kayit donmesin, upload tetiklenmesin.
+    if (recorder && recorder.state === "recording") {
+      recorder.onstop = null;
+      recorder.stop();
+      recorder = null;
+      chunks = [];
+    }
+    pendingUpload = false;
     el.textField.value = "";
     stopAgentAudio();
     sendTextTurn(text);

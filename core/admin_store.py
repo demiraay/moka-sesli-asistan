@@ -810,6 +810,7 @@ class AdminStore:
             "matches": matches,
             "user_id": user_id,
             "name": notes.get("name"),
+            "merchant_id": notes.get("merchant_id"),
             "stage": stage,
             "score": score,
             "temperature": "hot" if score >= 6 else ("warm" if score >= 3 else "cold"),
@@ -1231,22 +1232,31 @@ class AdminStore:
                 else:
                     payment_links += 1
 
-            today = datetime.now().strftime("%Y-%m-%d")
+            # created_at UTC yazilir; TR gununun basini UTC'ye cevirip esik al
+            # (hakem #23). Panel test kullanicisi metrikleri sismesin (hakem #24).
+            tr_now = datetime.now(self.TR_TZ)
+            day_start_utc = (
+                tr_now.replace(hour=0, minute=0, second=0, microsecond=0)
+                .astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            )
+            internal_marks = ",".join("?" for _ in self.INTERNAL_USER_IDS)
             calls_today = connection.execute(
                 "SELECT COUNT(*) AS c FROM conversation_sessions "
-                "WHERE channel = 'voice' AND created_at LIKE ?",
-                (f"{today}%",),
+                f"WHERE channel = 'voice' AND created_at >= ? AND user_id NOT IN ({internal_marks})",
+                (day_start_utc, *self.INTERNAL_USER_IDS),
             ).fetchone()["c"]
 
-            week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
             sessions_week = connection.execute(
-                "SELECT COUNT(*) AS c FROM conversation_sessions WHERE created_at >= ?",
-                (week_ago,),
+                f"SELECT COUNT(*) AS c FROM conversation_sessions WHERE created_at >= ? AND user_id NOT IN ({internal_marks})",
+                (week_ago, *self.INTERNAL_USER_IDS),
             ).fetchone()["c"]
             handoff_sessions_week = connection.execute(
-                "SELECT COUNT(DISTINCT session_id) AS c FROM conversation_turns "
-                "WHERE created_at >= ? AND context_json LIKE '%\"required\": true%'",
-                (week_ago,),
+                "SELECT COUNT(DISTINCT t.session_id) AS c FROM conversation_turns t "
+                "JOIN conversation_sessions s ON s.session_id = t.session_id "
+                f"WHERE t.created_at >= ? AND s.user_id NOT IN ({internal_marks}) "
+                "AND t.context_json LIKE '%\"required\": true%'",
+                (week_ago, *self.INTERNAL_USER_IDS),
             ).fetchone()["c"]
 
         containment_pct = 100

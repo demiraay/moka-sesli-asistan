@@ -21,12 +21,10 @@
 
   {% set STAGE_LABELS = {
     "new": "Yeni",
-    "qualified": "Nitelikli",
-    "appointment": "Randevu",
-    "visited": "Gösterim",
-    "reserved": "Opsiyon/Kapora",
-    "won": "Satış",
-    "lost": "Kayip"
+    "support": "Destekte",
+    "offer": "Teklif Sunuldu",
+    "won": "Kazanıldı",
+    "lost": "Kayıp"
   } %}
   <section class="notes-card takeover-card">
     <div class="notes-header">
@@ -94,7 +92,7 @@
               {{ STAGE_LABELS.get(event.payload.get('from'), event.payload.get('from')) }} →
               <strong>{{ STAGE_LABELS.get(event.payload.get('to'), event.payload.get('to')) }}</strong>
             {% elif event.event_type == 'offer_created' %}
-              📄 <strong><a href="{{ url_for('offer_detail', offer_id=event.payload.get('offer_id')) }}">Teklif #{{ event.payload.get('offer_id') }}</a></strong> ({{ event.payload.get('inventory_id') }})
+              📄 <strong>Teklif #{{ event.payload.get('offer_id') }}</strong>
             {% elif event.event_type == 'option_placed' %}
               ⏳ <strong>Opsiyon</strong> ({{ event.payload.get('inventory_id') }}, {{ event.payload.get('hours') }}s)
             {% elif event.event_type == 'option_expired' %}
@@ -120,52 +118,34 @@
   <section class="notes-card">
     <div class="notes-header">
       <div>
-        <h2>Talep Karti &amp; Eslesen Daireler</h2>
-        <p>AI'in konuşmadan çıkardigi kriterlere uyan, satıştaki en iyi daireler.</p>
+        <h2>Destek Kartı</h2>
+        <p>Yapay zekânın çağrıdan çıkardığı güncel durum.</p>
       </div>
     </div>
+    {% set notes = ai_notes.ai_notes %}
     {% set criteria = [] %}
-    {% if ai_notes.ai_notes.preferred_flat_type %}{% set _ = criteria.append('Tip: ' ~ ai_notes.ai_notes.preferred_flat_type) %}{% endif %}
-    {% if ai_notes.ai_notes.budget_max_try %}{% set _ = criteria.append('Butce: ≤ ' ~ '{:,.0f}'.format(ai_notes.ai_notes.budget_max_try).replace(',', '.') ~ ' TL') %}{% endif %}
-    {% if ai_notes.ai_notes.preferred_block %}{% set _ = criteria.append('Blok: ' ~ ai_notes.ai_notes.preferred_block) %}{% endif %}
-    {% if ai_notes.ai_notes.preferred_floor is not none %}{% set _ = criteria.append('Kat: ' ~ ai_notes.ai_notes.preferred_floor) %}{% endif %}
-    {% if ai_notes.ai_notes.preferred_direction %}{% set _ = criteria.append('Cephe: ' ~ ai_notes.ai_notes.preferred_direction) %}{% endif %}
-    {% if ai_notes.ai_notes.sun_preference %}{% set _ = criteria.append('Gunes: ' ~ ai_notes.ai_notes.sun_preference) %}{% endif %}
+    {% if notes.issue %}{% set _ = criteria.append('Sorun: ' ~ notes.issue) %}{% endif %}
+    {% if notes.mood %}{% set _ = criteria.append('Ruh hali: ' ~ notes.mood) %}{% endif %}
+    {% if notes.amount_mentioned_try %}{% set _ = criteria.append('Tutar: ' ~ notes.amount_mentioned_try ~ ' TL') %}{% endif %}
+    {% if notes.date_mentioned %}{% set _ = criteria.append('Tarih: ' ~ notes.date_mentioned) %}{% endif %}
+    {% if notes.terminal_id %}{% set _ = criteria.append('Terminal: ' ~ notes.terminal_id) %}{% endif %}
+    {% if notes.merchant_id %}{% set _ = criteria.append('İşletme: ' ~ notes.merchant_id) %}{% endif %}
     {% if criteria %}
       <div class="stage-history">
         {% for item in criteria %}<span class="stage-history-item">{{ item }}</span>{% endfor %}
       </div>
     {% else %}
-      <p class="empty-inline">Henuz yapilandirilmis tercih çıkarilmadi.</p>
-    {% endif %}
-
-    {% if unit_matches %}
-      <div class="match-list">
-        {% for match in unit_matches %}
-          <div class="match-row">
-            <span class="match-score">{{ match.score }} puan</span>
-            <div class="match-main">
-              <strong>{{ match.inventory_id }}</strong>
-              <small>{{ match.block_id }} blok · {{ match.floor }}. kat · Kapi {{ match.door_number }} · {{ match.flat_label }} · {{ match.direction }}</small>
-              <small class="match-reasons">{{ match.reasons | join(' · ') }}</small>
-            </div>
-            <span class="match-price">{{ match.price_short }}</span>
-            <a class="button secondary compact" href="{{ url_for('edit_listing', inventory_id=match.inventory_id) }}">Ilan</a>
-          </div>
-        {% endfor %}
-      </div>
-    {% elif criteria %}
-      <p class="empty-inline">Kriterlere uyan satışta daire bulunamadı.</p>
+      <p class="empty-inline">Henüz yapılandırılmış bilgi çıkarılmadı.</p>
     {% endif %}
   </section>
 
   <section class="notes-card">
     <div class="notes-header">
       <div>
-        <h2>Yapay Zeka Notlari</h2>
-        <p>Kullanıcı hakkinda çıkarilan onemli bilgiler burada tutulur.</p>
+        <h2>Yapay Zekâ Notları</h2>
+        <p>Müşteri hakkında çıkarılan önemli bilgiler burada tutulur.</p>
       </div>
-      <small>{{ ai_notes.updated_at or "Henuz guncellenmedi" }}</small>
+      <small>{{ ai_notes.updated_at or "Henüz güncellenmedi" }}</small>
     </div>
 
     <p class="notes-summary">{{ ai_notes.ai_summary or "Henüz kayda değer yapay zeka notu yok." }}</p>

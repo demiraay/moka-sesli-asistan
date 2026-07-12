@@ -99,6 +99,21 @@ class MerchantDataManager:
                 for field in _TOKEN_FIELDS[name]:
                     if field in row:
                         row[field] = resolve_date_token(row[field])
+
+        # Aylik ciro serilerini bugune sabitle: son eleman = icinde bulundugumuz
+        # ay olacak sekilde yeniden etiketle. Boylece JSON'daki mutlak aylar
+        # (2026-07 vb.) eskise de demo verisi bayatlamaz (hakem #18/#21).
+        today = date.today()
+        for merchant in self.config.merchants:
+            series = merchant.get("monthly_volume_try") or []
+            for offset, entry in enumerate(reversed(series)):
+                year = today.year
+                month = today.month - offset
+                while month <= 0:
+                    month += 12
+                    year -= 1
+                entry["month"] = f"{year:04d}-{month:02d}"
+
         self.config._date_tokens_resolved = True
 
     # -------------------------------------------------------------- merchants
@@ -218,8 +233,15 @@ class MerchantDataManager:
             None,
         )
 
-    @staticmethod
-    def _normalize_day(value: str) -> Optional[str]:
+    # "salı" -> en son gecen sali gunu (hakem bulgusu #7: hafta gunu adi
+    # tarihe cevrilmiyordu, filtre sessizce yok sayiliyordu)
+    _WEEKDAY_INDEX = {
+        "pazartesi": 0, "salı": 1, "sali": 1, "çarşamba": 2, "carsamba": 2,
+        "perşembe": 3, "persembe": 3, "cuma": 4, "cumartesi": 5, "pazar": 6,
+    }
+
+    @classmethod
+    def _normalize_day(cls, value: str) -> Optional[str]:
         value = (value or "").strip().lower()
         today = date.today()
         if value in ("bugün", "bugun", "today", "d0"):
@@ -228,6 +250,13 @@ class MerchantDataManager:
             return (today - timedelta(days=1)).isoformat()
         if value in ("evvelsi gün", "önceki gün", "d-2"):
             return (today - timedelta(days=2)).isoformat()
+        weekday_key = value.replace(" günü", "").replace(" gunu", "").strip()
+        if weekday_key in cls._WEEKDAY_INDEX:
+            target = cls._WEEKDAY_INDEX[weekday_key]
+            delta = (today.weekday() - target) % 7 or 7  # bugun soylenmisse gecen hafta degil bugun mu? konusmada "sali gunu" gecmisi kasteder
+            if today.weekday() == target:
+                delta = 0
+            return (today - timedelta(days=delta)).isoformat()
         token = resolve_date_token(value.upper())
         if token != value.upper():
             return token[:10]
@@ -243,14 +272,20 @@ class MerchantDataManager:
 
     # --------------------------------------------------------------------- kb
 
+    @staticmethod
+    def _tr_lower(text: str) -> str:
+        """Turkce-farkindalikli kucultme: 'İ'.lower() Python'da 'i' + birlesik
+        nokta (U+0307) uretir ve substring eslesmesini bozar (hakem bulgusu #5)."""
+        return (text or "").replace("İ", "i").replace("I", "ı").lower().replace("\u0307", "")
+
     def match_kb(self, symptom_text: str) -> Optional[Dict[str, Any]]:
         """Keyword-overlap match over the support knowledge base."""
-        text = (symptom_text or "").lower()
+        text = self._tr_lower(symptom_text)
         if not text:
             return None
         best, best_score = None, 0
         for entry in self.config.support_kb:
-            score = sum(1 for s in entry.get("symptoms", []) if s.lower() in text)
+            score = sum(1 for s in entry.get("symptoms", []) if self._tr_lower(s) in text)
             if score > best_score:
                 best, best_score = entry, score
         return best

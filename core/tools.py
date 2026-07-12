@@ -174,7 +174,7 @@ COMPACT_TOOL_GUIDE = """1. get_settlement_status{period: latest|pending|last_wee
 5. send_statement{period: this_month|last_month} — ekstre/dokum gonderimi.
 6. create_payment_link{amount_try?, description?} — musteri odeme linki istedi VEYA asistanin link teklifini kabul etti ("evet gonder").
 7. recommend_offer{trigger: volume_growth|social_selling|dormant_retention|pos_out_of_service, accepted?} — GELIR araci, sadece sorun cozuldukten sonra: ciro buyumesi/komisyon itirazi->volume_growth; "Instagram'dan satiyorum"->social_selling; "baska firmaya gectim" (churn)->dormant_retention; bozuk POS satis kaybettiriyor->pos_out_of_service. Musteri onceki teklifi kabul ederse ("olur/kabul") ayni trigger + accepted:true.
-8. trigger_handoff{reason, missing_info?} — OFKELI musteri ("yeter artik", "sikayet edecegim"), fraud/guvenlik, chargeback, hukuki tehdit, hesap kapatma, iki kez cozulemeyen ariza, acik insan talebi ("temsilci baglayin"). Siradan sorular icin KULLANMA.
+8. trigger_handoff{reason, missing_info?, share_contact_details?} — OFKELI musteri ("yeter artik", "sikayet edecegim"), fraud/guvenlik, chargeback, hukuki tehdit, hesap kapatma, iki kez cozulemeyen ariza, acik insan talebi ("temsilci baglayin"). Musteri temsilcinin numarasini/iletisimini ISTERSE share_contact_details:true. Siradan sorular icin KULLANMA.
 9. answer_general{category: greeting|company_info|how_it_works|working_hours|security_smalltalk|thanks|other} — selamlasma, Moka bilgisi, tesekkur. Musteri TAM kart numarasi okumaya baslarsa -> security_smalltalk (asistan kesip uyaracak)."""
 
 

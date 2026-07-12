@@ -40,7 +40,11 @@ class AgentOrchestrator:
     # ------------------------------------------------------------ formatting
 
     def _format_try_amount(self, amount: float) -> str:
-        amount = int(round(amount))
+        # Savunmaci: LLM/veri katmani string dondurse bile cokme (hakem bulgusu #2).
+        try:
+            amount = int(round(float(str(amount).replace(",", "."))))
+        except (TypeError, ValueError):
+            return f"{amount} TL"
         if amount >= 1_000_000:
             millions = amount // 1_000_000
             thousands = (amount % 1_000_000) // 1_000
@@ -592,6 +596,47 @@ class AgentOrchestrator:
             "already told you, and never ask for info the card already has."
         )
 
+    @staticmethod
+    def _parse_amount_text(value: Any) -> float | None:
+        """"1.250", "1,250.50", "1250" gibi metinleri tutara cevirir.
+
+        Kural: hem nokta hem virgul varsa SONUNCUSU ondaliktir; tek tur ayrac
+        tam 3 hanelik grup(lar) ayiriyorsa binliktir ("1.250" -> 1250),
+        1-2 hane ayiriyorsa ondaliktir ("500,5" -> 500.5). (Hakem #1 devami:
+        ilk coercion "1.250"u 1.25 yapiyordu.)
+        """
+        if value is None or isinstance(value, (int, float)):
+            return float(value) if value is not None else None
+        text = str(value).strip().replace(" ", "").replace("TL", "").replace("₺", "")
+        if not text:
+            return None
+        if "." in text and "," in text:
+            if text.rfind(",") > text.rfind("."):
+                text = text.replace(".", "").replace(",", ".")  # 1.250,50
+            else:
+                text = text.replace(",", "")                     # 1,250.50
+        elif "." in text or "," in text:
+            sep = "." if "." in text else ","
+            head, *groups = text.split(sep)
+            if groups and all(len(g) == 3 for g in groups):
+                text = head + "".join(groups)                    # binlik: 1.250(.000)
+            else:
+                text = text.replace(",", ".")                    # ondalik: 500,5
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    @classmethod
+    def _coerce_numeric_args(cls, tool_args: Dict[str, Any]) -> Dict[str, Any]:
+        """Router LLM sayilari bazen string dondurur; dispatch'e girmeden
+        float'a cevir, cevrilemiyorsa at (hakem bulgusu #1/#2)."""
+        coerced = dict(tool_args)
+        for key in ("amount_try",):
+            if key in coerced and not isinstance(coerced[key], (int, float, type(None))):
+                coerced[key] = cls._parse_amount_text(coerced[key])
+        return coerced
+
     def _merge_contextual_filters(
         self,
         tool_name: str,
@@ -648,6 +693,7 @@ class AgentOrchestrator:
 
         if not isinstance(tool_args, dict):
             tool_args = {}
+        tool_args = self._coerce_numeric_args(tool_args)
         tool_args = self._merge_contextual_filters(tool_name, tool_args, current_slots, user_profile)
         router_decision["args"] = tool_args
         self._update_user_profile_from_tool_args(user_profile, tool_args)
@@ -1097,35 +1143,43 @@ class AgentOrchestrator:
             "slots": current_slots
         })
 
-        # 2. TOOL EXECUTION STEP
-        if merchant is None:
-            response_builder.add_fact("İşletme kaydı bulunamadı; genel bilgiyle yardımcı ol, gerekirse temsilciye devret.")
-        elif tool_name == "get_settlement_status":
-            self._handle_settlement(response_builder, merchant, tool_args)
-        elif tool_name == "find_transaction":
-            self._handle_find_transaction(response_builder, merchant, tool_args)
-        elif tool_name == "troubleshoot_pos":
-            self._handle_troubleshoot(response_builder, merchant, tool_args, user_profile, user_id)
-        elif tool_name == "explain_fees":
-            self._handle_explain_fees(response_builder, merchant, tool_args, user_profile)
-        elif tool_name == "send_statement":
-            self._handle_send_statement(response_builder, merchant, tool_args, user_id)
-        elif tool_name == "create_payment_link":
-            self._handle_payment_link(response_builder, merchant, tool_args, user_profile, user_id)
-        elif tool_name == "recommend_offer":
-            self._handle_recommend_offer(response_builder, merchant, tool_args, user_profile, user_id)
-        elif tool_name == "trigger_handoff":
-            response_builder.trigger_handoff(
-                reason=tool_args.get("reason", "Müşteri talebi"),
-                missing_info=tool_args.get("missing_info", []),
-                share_contact_details=bool(tool_args.get("share_contact_details")),
-            )
+        # 2. TOOL EXECUTION STEP — herhangi bir handler hatasi cagriyi OLDURMEZ:
+        # hata loglanir, cevap LLM'i "tekrar deneyelim" tonunda devam eder.
+        try:
+            if merchant is None:
+                response_builder.add_fact("İşletme kaydı bulunamadı; genel bilgiyle yardımcı ol, gerekirse temsilciye devret.")
+            elif tool_name == "get_settlement_status":
+                self._handle_settlement(response_builder, merchant, tool_args)
+            elif tool_name == "find_transaction":
+                self._handle_find_transaction(response_builder, merchant, tool_args)
+            elif tool_name == "troubleshoot_pos":
+                self._handle_troubleshoot(response_builder, merchant, tool_args, user_profile, user_id)
+            elif tool_name == "explain_fees":
+                self._handle_explain_fees(response_builder, merchant, tool_args, user_profile)
+            elif tool_name == "send_statement":
+                self._handle_send_statement(response_builder, merchant, tool_args, user_id)
+            elif tool_name == "create_payment_link":
+                self._handle_payment_link(response_builder, merchant, tool_args, user_profile, user_id)
+            elif tool_name == "recommend_offer":
+                self._handle_recommend_offer(response_builder, merchant, tool_args, user_profile, user_id)
+            elif tool_name == "trigger_handoff":
+                response_builder.trigger_handoff(
+                    reason=tool_args.get("reason", "Müşteri talebi"),
+                    missing_info=tool_args.get("missing_info", []),
+                    share_contact_details=bool(tool_args.get("share_contact_details")),
+                )
+                response_builder.add_fact(
+                    "İnsan temsilciye devir tetiklendi. Müşteriyi doğrula (haklısınız de), özetin "
+                    "temsilciye iletildiğini ve hemen bağlanacağını söyle."
+                )
+            else:  # answer_general ve bilinmeyen araclar
+                self._handle_answer_general(response_builder, merchant, tool_args, user_profile)
+        except Exception as error:
+            print(f"Tool dispatch error ({tool_name}): {error}")
             response_builder.add_fact(
-                "İnsan temsilciye devir tetiklendi. Müşteriyi doğrula (haklısınız de), özetin "
-                "temsilciye iletildiğini ve hemen bağlanacağını söyle."
+                "Sistemde kısa süreli bir aksaklık oldu ve sorgu tamamlanamadı. Özür dile, "
+                "bilgiyi TEKRAR sormasını iste (tutar/tarih), asla veri uydurma."
             )
-        else:  # answer_general ve bilinmeyen araclar
-            self._handle_answer_general(response_builder, merchant, tool_args, user_profile)
 
         # 3. RESPONSE GENERATION STEP
         context_json = response_builder.to_json()

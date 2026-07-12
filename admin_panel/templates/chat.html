@@ -16,7 +16,7 @@
     {% for turn in history %}
       <div class="chat-bubble {{ 'user' if turn.role == 'user' else 'agent' }}">{{ turn.text }}</div>
     {% else %}
-      <div class="chat-empty" id="chat-empty">Henuz mesaj yok. Asagidan yazarak baslayin, ornegin: "merhaba" ya da "3+1 daire var mi?"</div>
+      <div class="chat-empty" id="chat-empty">Henüz mesaj yok. Aşağıdan yazarak başlayın, örneğin: "Param ne zaman yatacak?" ya da "POS cihazım açılmıyor".</div>
     {% endfor %}
   </div>
 
