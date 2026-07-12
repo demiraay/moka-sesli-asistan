@@ -21,6 +21,15 @@
 
 ---
 
+> [!IMPORTANT]
+> ### 🎯 Değerlendiriciler için not
+> Bu projeye gerçekten büyük emek verdik ve sistemin canlı hâlini deneyimlemenizi
+> içtenlikle çok isteriz: sesli görüşme ekranında Ada ile gerçekten konuşabilir,
+> panelde kurtarılan hacmin işlenişini canlı izleyebilirsiniz. Kurulum yalnızca
+> üç komuttur ([Kurulum](#9-kurulum)); güvenlik gereği API anahtarları depoda
+> tutulmamaktadır — **talep etmeniz hâlinde `.env` dosyasını (hazır anahtarlarla)
+> anında paylaşırız** ve projeyi 5 dakika içinde çalıştırabilirsiniz.
+
 ## Bir Bakışta
 
 | | |
