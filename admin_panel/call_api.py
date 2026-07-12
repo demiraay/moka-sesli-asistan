@@ -97,6 +97,10 @@ def register_call_routes(app, orchestrator) -> None:
         # Her cagri taze bir oturum acar: demo sirasinda onceki konusma sizmasin.
         call_id = f"call-{uuid.uuid4().hex[:8]}"
         voice_id = payload.get("voice_id") or _default_voice_id()
+        # Katalog disi id sessiz cagri uretir (her turda TTS hatasi yutulur);
+        # varsayilana dus.
+        if not any(v["voice_id"] == voice_id for v in VOICE_CATALOG):
+            voice_id = _default_voice_id()
         call_voice_ids[call_id] = voice_id
 
         started = time.perf_counter()

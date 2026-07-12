@@ -93,7 +93,10 @@ def create_app(
         # CSS degisikligi tarayici onbellegine takilmasin diye dosya mtime'i
         # ile surumler; her guncelleme otomatik taze gelir.
         try:
-            return {"css_version": int(os.path.getmtime(STATIC_DIR / "admin.css"))}
+            files = ("admin.css", "call.css", "call.js")
+            return {"css_version": int(max(
+                os.path.getmtime(STATIC_DIR / name) for name in files
+            ))}
         except OSError:
             return {"css_version": 0}
 

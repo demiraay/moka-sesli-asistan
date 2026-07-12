@@ -50,6 +50,18 @@
   let timerInterval = null;
   let handoffDone = false;
   let pendingUpload = false;
+  let previewAudio = null;  // ses onizlemesi — arama baslarken durdurulmali
+
+  function stopPreview() {
+    if (previewAudio) {
+      previewAudio.pause();
+      previewAudio = null;
+    }
+    if (el.btnVoicePreview) {
+      el.btnVoicePreview.disabled = false;
+      el.btnVoicePreview.textContent = "▶";
+    }
+  }
 
   // VAD parametreleri
   const VAD = {
@@ -355,6 +367,7 @@
 
   // --- cagri yasam dongusu ---
   async function startCall() {
+    stopPreview();  // onizleme selamlamayla cakismasin, VAD kalibrasyonunu bozmasin
     el.btnStart.disabled = true;
     el.btnStart.textContent = "Bağlanıyor…";
     setState("connecting");
@@ -421,6 +434,7 @@
     setState("ended");
     el.controls.hidden = true;
     el.textForm.hidden = true;
+    el.textToggle.checked = false;
     addSysNote("— arama sona erdi —");
     try {
       const resp = await fetch("/call/end", {
@@ -447,22 +461,16 @@
 
   // Ses onizleme: adayin kisa tanitim cumlesi calinir
   if (el.btnVoicePreview && el.voiceSelect) {
-    let previewAudio = null;
     el.btnVoicePreview.addEventListener("click", function () {
-      if (previewAudio) { previewAudio.pause(); previewAudio = null; }
+      if (previewAudio) { stopPreview(); return; }  // ikinci tik = durdur
       el.btnVoicePreview.disabled = true;
       el.btnVoicePreview.textContent = "…";
       previewAudio = new Audio("/call/voice-preview/" + el.voiceSelect.value);
-      const reset = function () {
-        el.btnVoicePreview.disabled = false;
-        el.btnVoicePreview.textContent = "▶";
-        previewAudio = null;
-      };
-      previewAudio.onended = reset;
-      previewAudio.onerror = reset;
+      previewAudio.onended = stopPreview;
+      previewAudio.onerror = stopPreview;
       previewAudio.play()
         .then(function () { el.btnVoicePreview.disabled = false; el.btnVoicePreview.textContent = "🔊"; })
-        .catch(reset);
+        .catch(stopPreview);
     });
   }
   el.btnEnd.addEventListener("click", function () { endCall("ended"); });
