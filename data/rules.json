@@ -1,0 +1,17 @@
+{
+    "pricing_rules": {
+        "negotiation_allowed": false,
+        "custom_discount_allowed": false,
+        "agent_can_calculate_discount": false,
+        "price_is_list_price_only": true
+    },
+    "stock_rules": {
+        "must_check_inventory": true,
+        "no_guessing": true,
+        "reservation_duration_days": 3
+    },
+    "viewing_rules": {
+        "appointment_required": true,
+        "working_hours": "09:00 - 18:00"
+    }
+}

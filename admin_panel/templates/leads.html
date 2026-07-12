@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+
+{% block title %}Musteri Adaylari — {{ panel_project }}{% endblock %}
+
+{% set STAGE_LABELS = {
+  "new": "Yeni",
+  "qualified": "Nitelikli",
+  "appointment": "Randevu",
+  "visited": "Gosterim",
+  "reserved": "Opsiyon/Kapora",
+  "won": "Satis",
+  "lost": "Kayip"
+} %}
+
+{% macro temp_label(t) %}{{ 'SICAK' if t == 'hot' else ('ILIK' if t == 'warm' else 'SOGUK') }}{% endmacro %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Musteri Adaylari</h1>
+    <p>Adaylari asamalarina gore gorun; detay icin bir adaya tiklayin.</p>
+  </div>
+
+  {% if handoff_queue %}
+    <section class="handoff-queue">
+      <div class="handoff-queue-header">
+        <h2>İnsan Bekleyenler <em class="kanban-count">{{ handoff_queue | length }}</em></h2>
+        <p class="muted-line">AI temsilciye devretti; müşteri danışman dönüşü bekliyor.</p>
+      </div>
+      <div class="handoff-queue-list">
+        {% for item in handoff_queue %}
+          <div class="handoff-item">
+            <span class="sla-badge {{ item.sla_level }}">{{ item.waiting_minutes }} dk</span>
+            <div class="handoff-item-main">
+              <a href="{{ url_for('user_conversations', user_id=item.user_id) }}"><strong>{{ item.name or item.user_id }}</strong></a>
+              <small>{{ item.reason or 'Yönlendirme talebi' }} · "{{ item.last_user_message[:60] }}"</small>
+            </div>
+            <span class="channel-pill {{ 'whatsapp' if item.channel == 'whatsapp' else 'default' }}">{{ item.channel }}</span>
+            <div class="handoff-item-actions">
+              <a class="button secondary compact" href="{{ url_for('conversation_detail', session_id=item.session_id) }}">Konuşma</a>
+              <form method="post" action="{{ url_for('claim_handoff', user_id=item.user_id) }}">
+                <button type="submit" class="button compact">Devraldım</button>
+              </form>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  {% if leads %}
+    <div class="lead-toolbar">
+      <input type="text" id="lead-search" class="lead-search" autocomplete="off" placeholder="Isim / telefon ara...">
+      <div class="lead-filter-chips" id="lead-stage-filter">
+        <button type="button" class="filter-chip active" data-stage="all">Tumu</button>
+        {% for stage in stages %}
+          <button type="button" class="filter-chip" data-stage="{{ stage }}">{{ STAGE_LABELS[stage] }}</button>
+        {% endfor %}
+      </div>
+      <div class="lead-filter-chips" id="lead-temp-filter">
+        <button type="button" class="filter-chip active" data-temp="all">Hepsi</button>
+        <button type="button" class="filter-chip" data-temp="hot">Sicak</button>
+        <button type="button" class="filter-chip" data-temp="warm">Ilik</button>
+        <button type="button" class="filter-chip" data-temp="cold">Soguk</button>
+      </div>
+      <span class="lead-count" id="lead-count"></span>
+    </div>
+
+    <div class="lead-pipeline" id="lead-pipeline">
+      {% for stage in stages %}
+        {% set stage_leads = leads | selectattr('stage', 'equalto', stage) | list %}
+        <section class="lead-group{{ ' is-empty' if not stage_leads }}" data-stage="{{ stage }}">
+          <header class="lead-group-header">
+            <span class="lead-group-dot stage-{{ stage }}"></span>
+            <h2>{{ STAGE_LABELS[stage] }}</h2>
+            <em class="lead-group-count" data-count-for="{{ stage }}">{{ stage_leads | length }}</em>
+          </header>
+          <div class="lead-rows" data-stage="{{ stage }}">
+            {% for lead in stage_leads %}
+              <button type="button" class="lead-row" data-user="{{ lead.user_id }}"
+                      data-stage="{{ lead.stage }}" data-temp="{{ lead.temperature }}"
+                      data-search="{{ ((lead.name or '') ~ ' ' ~ lead.user_id) | lower }}"
+                      data-lead='{{ {
+                        "user_id": lead.user_id,
+                        "name": lead.name,
+                        "stage": lead.stage,
+                        "temperature": lead.temperature,
+                        "score": lead.score,
+                        "suggested_stage": lead.suggested_stage,
+                        "ai_summary": lead.ai_summary,
+                        "manual_notes": lead.manual_notes,
+                        "budget_max_try": lead.budget_max_try,
+                        "preferred_flat_type": lead.preferred_flat_type,
+                        "urgency": lead.urgency,
+                        "handoff_required": lead.handoff_required,
+                        "conversation_count": lead.conversation_count,
+                        "channels": lead.channels,
+                        "last_contact_at": lead.last_contact_at,
+                        "matches": lead.matches
+                      } | tojson | e }}'>
+                <span class="temp-badge {{ lead.temperature }}">{{ temp_label(lead.temperature) }}</span>
+                <span class="lead-row-main">
+                  <span class="lead-row-name">{{ lead.name or lead.user_id }}</span>
+                  <span class="lead-row-chips">
+                    {% if lead.preferred_flat_type %}<span class="lead-chip">{{ lead.preferred_flat_type }}</span>{% endif %}
+                    {% if lead.budget_max_try %}<span class="lead-chip">≤ {{ lead.budget_max_try | tl }}</span>{% endif %}
+                    {% if lead.urgency == 'high' %}<span class="lead-chip urgent">acil</span>{% endif %}
+                    {% if lead.match_count %}<span class="lead-chip match">{{ lead.match_count }} eslesme</span>{% endif %}
+                  </span>
+                </span>
+                <span class="lead-row-meta">
+                  {% if lead.handoff_required %}<span class="handoff-flag">devir bekliyor</span>{% endif %}
+                  <span class="lead-row-time">{{ lead.last_contact_at or 'temas yok' }}</span>
+                </span>
+                <span class="lead-row-chevron" aria-hidden="true">›</span>
+              </button>
+            {% endfor %}
+          </div>
+          <p class="lead-group-empty">Bu asamada aday yok.</p>
+        </section>
+      {% endfor %}
+      <p class="lead-no-result" id="lead-no-result" hidden>Aramaya/filtreye uyan aday yok.</p>
+    </div>
+  {% else %}
+    <div class="empty-state">Henuz lead yok — WhatsApp'tan ya da test sohbetinden konusmalar basladikca burasi dolacak.</div>
+  {% endif %}
+
+  <div class="lead-panel-backdrop" id="lead-backdrop"></div>
+  <aside class="lead-panel" id="lead-panel" aria-hidden="true">
+    <div class="lead-panel-header">
+      <div>
+        <h2 id="lp-name">—</h2>
+        <p id="lp-sub" class="muted-line">—</p>
+      </div>
+      <button type="button" class="button secondary compact" id="lp-close">Kapat</button>
+    </div>
+
+    <div class="lp-badges">
+      <span class="temp-badge" id="lp-temp">—</span>
+      <span class="lp-stage-badge" id="lp-stage-badge">—</span>
+      <span class="lp-score" id="lp-score"></span>
+    </div>
+
+    <div class="lp-section" id="lp-summary-wrap" hidden>
+      <span class="lp-label">AI ozeti</span>
+      <p id="lp-summary"></p>
+    </div>
+
+    <div class="lp-section">
+      <span class="lp-label">Tercihler</span>
+      <div class="lp-facts" id="lp-facts"></div>
+    </div>
+
+    <div class="lp-section">
+      <span class="lp-label">Asama</span>
+      <div class="lp-stage-buttons" id="lp-stage-buttons"></div>
+      <button type="button" class="suggestion-chip" id="lp-suggestion" hidden></button>
+    </div>
+
+    <div class="lp-section" id="lp-matches-wrap" hidden>
+      <span class="lp-label">Eslesen daireler</span>
+      <div class="lp-matches" id="lp-matches"></div>
+    </div>
+
+    <div class="lp-section" id="lp-notes-wrap" hidden>
+      <span class="lp-label">Manuel not</span>
+      <p id="lp-notes"></p>
+    </div>
+
+    <div class="lp-actions">
+      <a class="button" id="lp-open-conversation" href="#">Konusmayi ac</a>
+      <form method="post" id="lp-claim-form" hidden><button type="submit" class="button secondary">Devraldim</button></form>
+    </div>
+    <p class="chart-note" id="lp-feedback"></p>
+  </aside>
+
+<script>
+  const STAGE_LABELS = {{ STAGE_LABELS | tojson }};
+  const STAGES = {{ stages | list | tojson }};
+  const TEMP_LABEL = { hot: "SICAK", warm: "ILIK", cold: "SOGUK" };
+
+  function tl(n) {
+    return n ? new Intl.NumberFormat("tr-TR").format(n) + " TL" : "—";
+  }
+
+  // --- Filtreleme ---
+  const filterState = { stage: "all", temp: "all", q: "" };
+  const searchInput = document.getElementById("lead-search");
+  const leadCount = document.getElementById("lead-count");
+  const noResult = document.getElementById("lead-no-result");
+
+  function applyLeadFilters() {
+    let visible = 0;
+    document.querySelectorAll(".lead-group").forEach((group) => {
+      const stage = group.dataset.stage;
+      const stageOk = filterState.stage === "all" || filterState.stage === stage;
+      let shownInGroup = 0;
+      group.querySelectorAll(".lead-row").forEach((row) => {
+        const ok = stageOk
+          && (filterState.temp === "all" || row.dataset.temp === filterState.temp)
+          && (filterState.q === "" || row.dataset.search.indexOf(filterState.q) !== -1);
+        row.hidden = !ok;
+        if (ok) { shownInGroup += 1; visible += 1; }
+      });
+      // Filtre aktifken bos gruplari gizle; filtresizken pipeline yapisi gorunsun
+      const filtering = filterState.stage !== "all" || filterState.temp !== "all" || filterState.q !== "";
+      group.hidden = filtering && shownInGroup === 0;
+    });
+    leadCount.textContent = visible + " aday";
+    noResult.hidden = visible > 0;
+  }
+
+  function bindChipGroup(id, key, attr) {
+    document.querySelectorAll("#" + id + " .filter-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll("#" + id + " .filter-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        filterState[key] = chip.dataset[attr];
+        applyLeadFilters();
+      });
+    });
+  }
+  bindChipGroup("lead-stage-filter", "stage", "stage");
+  bindChipGroup("lead-temp-filter", "temp", "temp");
+  searchInput.addEventListener("input", () => {
+    filterState.q = searchInput.value.trim().toLowerCase();
+    applyLeadFilters();
+  });
+  applyLeadFilters();
+
+  // --- Detay paneli ---
+  const panel = document.getElementById("lead-panel");
+  const backdrop = document.getElementById("lead-backdrop");
+  let activeLead = null;
+  let activeRow = null;
+
+  function renderStageButtons(lead) {
+    const wrap = document.getElementById("lp-stage-buttons");
+    wrap.innerHTML = "";
+    STAGES.forEach((stage) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "lp-stage-pill" + (stage === lead.stage ? " current" : "");
+      btn.textContent = STAGE_LABELS[stage];
+      btn.addEventListener("click", () => changeStage(stage));
+      wrap.appendChild(btn);
+    });
+  }
+
+  function openLead(row) {
+    activeRow = row;
+    activeLead = JSON.parse(row.dataset.lead);
+    const lead = activeLead;
+
+    document.getElementById("lp-name").textContent = lead.name || lead.user_id;
+    const subBits = [];
+    if (lead.name) subBits.push(lead.user_id);
+    subBits.push(lead.conversation_count + " oturum");
+    if (lead.last_contact_at) subBits.push("son temas " + lead.last_contact_at);
+    document.getElementById("lp-sub").textContent = subBits.join(" · ");
+
+    const tempEl = document.getElementById("lp-temp");
+    tempEl.className = "temp-badge " + lead.temperature;
+    tempEl.textContent = TEMP_LABEL[lead.temperature] || lead.temperature;
+    document.getElementById("lp-stage-badge").textContent = STAGE_LABELS[lead.stage] || lead.stage;
+    document.getElementById("lp-score").textContent = "Skor " + lead.score;
+
+    const summaryWrap = document.getElementById("lp-summary-wrap");
+    if (lead.ai_summary) {
+      document.getElementById("lp-summary").textContent = lead.ai_summary;
+      summaryWrap.hidden = false;
+    } else summaryWrap.hidden = true;
+
+    const facts = document.getElementById("lp-facts");
+    facts.innerHTML = "";
+    const factList = [
+      ["Tip", lead.preferred_flat_type],
+      ["Butce", lead.budget_max_try ? "≤ " + tl(lead.budget_max_try) : null],
+      ["Aciliyet", lead.urgency === "high" ? "Yuksek" : (lead.urgency === "low" ? "Dusuk" : lead.urgency)],
+      ["Kanal", (lead.channels || []).filter(Boolean).join(", ")],
+    ];
+    factList.forEach(([label, value]) => {
+      if (!value) return;
+      const div = document.createElement("div");
+      div.className = "lp-fact";
+      div.innerHTML = '<span>' + label + '</span><strong>' + value + '</strong>';
+      facts.appendChild(div);
+    });
+
+    renderStageButtons(lead);
+    const suggestion = document.getElementById("lp-suggestion");
+    if (lead.suggested_stage && lead.suggested_stage !== lead.stage) {
+      suggestion.textContent = "AI onerisi: " + STAGE_LABELS[lead.suggested_stage] + " →";
+      suggestion.hidden = false;
+      suggestion.onclick = () => changeStage(lead.suggested_stage);
+    } else suggestion.hidden = true;
+
+    const matchesWrap = document.getElementById("lp-matches-wrap");
+    const matches = lead.matches || [];
+    if (matches.length) {
+      const box = document.getElementById("lp-matches");
+      box.innerHTML = "";
+      matches.forEach((m) => {
+        const a = document.createElement("a");
+        a.className = "lp-match";
+        a.href = "/admin/listings/" + m.inventory_id;
+        a.innerHTML = '<strong>' + m.block_id + '-' + m.door_number + '</strong> · ' + m.flat_label
+          + ' <span class="lp-match-price">' + (m.price_short || "") + '</span>'
+          + '<span class="lp-match-reasons">' + (m.reasons || []).join(" · ") + '</span>';
+        box.appendChild(a);
+      });
+      matchesWrap.hidden = false;
+    } else matchesWrap.hidden = true;
+
+    const notesWrap = document.getElementById("lp-notes-wrap");
+    if (lead.manual_notes) {
+      document.getElementById("lp-notes").textContent = lead.manual_notes;
+      notesWrap.hidden = false;
+    } else notesWrap.hidden = true;
+
+    document.getElementById("lp-open-conversation").href = "/admin/users/" + encodeURIComponent(lead.user_id) + "/conversations";
+    const claimForm = document.getElementById("lp-claim-form");
+    if (lead.handoff_required) {
+      claimForm.action = "/admin/leads/" + encodeURIComponent(lead.user_id) + "/claim";
+      claimForm.hidden = false;
+    } else claimForm.hidden = true;
+
+    document.getElementById("lp-feedback").textContent = "";
+    panel.classList.add("open");
+    backdrop.classList.add("open");
+    panel.setAttribute("aria-hidden", "false");
+  }
+
+  function closeLead() {
+    panel.classList.remove("open");
+    backdrop.classList.remove("open");
+    panel.setAttribute("aria-hidden", "true");
+    activeLead = null;
+    activeRow = null;
+  }
+
+  async function changeStage(newStage) {
+    if (!activeLead || newStage === activeLead.stage) return;
+    const feedback = document.getElementById("lp-feedback");
+    feedback.textContent = "Kaydediliyor...";
+    try {
+      const response = await fetch("/admin/leads/" + encodeURIComponent(activeLead.user_id) + "/stage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage: newStage }),
+      });
+      if (!response.ok) { feedback.textContent = "Kaydedilemedi."; return; }
+      moveRowToStage(activeRow, newStage);
+      activeLead.stage = newStage;
+      activeRow.dataset.lead = JSON.stringify(activeLead);
+      document.getElementById("lp-stage-badge").textContent = STAGE_LABELS[newStage];
+      renderStageButtons(activeLead);
+      const suggestion = document.getElementById("lp-suggestion");
+      if (activeLead.suggested_stage === newStage) suggestion.hidden = true;
+      feedback.textContent = "Asama guncellendi.";
+    } catch (e) {
+      feedback.textContent = "Sunucuya ulasilamadi.";
+    }
+  }
+
+  function moveRowToStage(row, newStage) {
+    const target = document.querySelector('.lead-rows[data-stage="' + newStage + '"]');
+    if (!target) return;
+    row.dataset.stage = newStage;
+    target.prepend(row);
+    updateGroupCounts();
+    applyLeadFilters();
+  }
+
+  function updateGroupCounts() {
+    document.querySelectorAll(".lead-group").forEach((group) => {
+      const stage = group.dataset.stage;
+      const count = group.querySelectorAll(".lead-row").length;
+      group.querySelector('[data-count-for="' + stage + '"]').textContent = count;
+      group.classList.toggle("is-empty", count === 0);
+    });
+  }
+
+  document.querySelectorAll(".lead-row").forEach((row) => {
+    row.addEventListener("click", () => openLead(row));
+  });
+  document.getElementById("lp-close").addEventListener("click", closeLead);
+  backdrop.addEventListener("click", closeLead);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && panel.classList.contains("open")) closeLead();
+  });
+</script>
+{% endblock %}

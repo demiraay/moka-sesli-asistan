@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}{{ panel_project }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}?v={{ css_version }}">
+    {# İlk render'da titreme olmasın diye daraltma durumu daha body parse edilmeden basılır. #}
+    <script>try{if(localStorage.getItem("admin.sidebar.collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed")}catch(e){}</script>
+  </head>
+  <body>
+    <header class="mobile-topbar">
+      <button type="button" class="topbar-nav-btn" id="nav-open" aria-label="Menuyu ac">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+      <span class="mobile-title">{{ panel_project }}</span>
+    </header>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+    <button type="button" class="present-exit" id="present-exit" title="Sunum modundan cik (Esc)">
+      Sunum modundan cik
+    </button>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-top">
+          <a class="brand" href="{{ url_for('dashboard') }}">
+            <span class="brand-full">{{ panel_project }}</span><span class="brand-mini">{{ panel_project[:2] | upper }}</span>
+          </a>
+          <div class="sidebar-top-actions">
+            <button type="button" class="sidebar-toggle" id="present-btn"
+                    aria-label="Sunum modu" title="Sunum modu — menuyu gizle (Ctrl+Shift+P)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h20v12H2zM8 20h8M12 16v4"/></svg>
+            </button>
+            <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-expanded="true"
+                    aria-label="Menuyu daralt/genislet" title="Menuyu daralt/genislet (Ctrl+B)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+          </div>
+        </div>
+        {% set nav_icons = {
+          'home': '<path d="M3 11.5 12 3l9 8.5"/><path d="M5.5 10v10h13V10"/>',
+          'list': '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+          'grid': '<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/>',
+          'users': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+          'chart': '<path d="M18 20V10M12 20V4M6 20v-6"/>',
+          'check': '<path d="m9 11.5 2.5 2.5L19 6.5"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+          'chat': '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3a8.5 8.5 0 0 1 8.5 8.5z"/>',
+          'messages': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+          'profile': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+          'block': '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
+        } %}
+        {# Alt sayfalar üst nav öğesine eşlenir: müşteri detayı lead çalışma ekranıdır,
+           teklifler stok panosundan açılır, oturum detayı Konuşmalar'a aittir.
+           Gruplar iş akışına göre sıralı: gün içi operasyon > envanter > araçlar. #}
+        {% set nav_groups = [
+          ('Operasyon', [
+            ('dashboard', 'Panel', 'home', ('dashboard', 'generate_briefing_route')),
+            ('leads', 'Musteri Adaylari', 'users', ('leads', 'user_conversations')),
+            ('conversations', 'Konusmalar', 'messages', ('conversations', 'conversation_detail')),
+            ('tasks', 'Gorevler', 'check', ('tasks',)),
+            ('exceptions', 'Istisnalar', 'block', ('exceptions', 'remove_exception')),
+          ]),
+          ('Envanter', [
+            ('stock_board', 'Stok Panosu', 'grid', ('stock_board', 'new_offer', 'offer_detail')),
+            ('listings', 'Ilanlar', 'list', ('listings', 'edit_listing')),
+          ]),
+          ('Araclar', [
+            ('analytics', 'Analitik', 'chart', ('analytics',)),
+            ('chat', 'Test Sohbeti', 'chat', ('chat',)),
+            ('sales_profile', 'Satis Profili', 'profile', ('sales_profile',)),
+          ]),
+        ] %}
+        {% set current = request.endpoint or '' %}
+        <nav class="nav">
+          {% for group_label, items in nav_groups %}
+          <div class="nav-group-label">{{ group_label }}</div>
+          {% for endpoint, label, icon, group in items %}
+          {% set is_active = current in group %}
+          <a class="nav-link{{ ' active' if is_active }}" href="{{ url_for(endpoint) }}"
+             title="{{ label }}"{% if is_active %} aria-current="page"{% endif %}>
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 aria-hidden="true">{{ nav_icons[icon] | safe }}</svg>
+            <span class="nav-label">{{ label }}</span>
+            {% if nav_badges is defined %}
+              {% if endpoint == 'leads' and nav_badges.handoff %}
+                <span class="nav-badge danger" title="Insan bekleyen konusma">{{ nav_badges.handoff }}</span>
+              {% elif endpoint == 'tasks' and nav_badges.tasks %}
+                <span class="nav-badge" title="Acik gorev">{{ nav_badges.tasks }}</span>
+              {% endif %}
+            {% endif %}
+          </a>
+          {% endfor %}
+          {% endfor %}
+        </nav>
+        {% if panel_office and (panel_office.office_name or panel_office.consultant_name) %}
+          <div class="sidebar-footer">
+            {% if panel_office.office_name %}<strong>{{ panel_office.office_name }}</strong>{% endif %}
+            {% if panel_office.consultant_name %}<span>{{ panel_office.consultant_name }}</span>{% endif %}
+            {% if panel_office.phone_number %}<span>{{ panel_office.phone_number }}</span>{% endif %}
+          </div>
+        {% endif %}
+      </aside>
+      <main class="content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack">
+              {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+    <script>
+    (function () {
+      var KEY = "admin.sidebar.collapsed";
+      var root = document.documentElement;
+      var toggleBtn = document.getElementById("sidebar-toggle");
+
+      function applyCollapsed(collapsed) {
+        root.classList.toggle("sidebar-collapsed", collapsed);
+        if (toggleBtn) toggleBtn.setAttribute("aria-expanded", String(!collapsed));
+        try { localStorage.setItem(KEY, collapsed ? "1" : "0"); } catch (e) {}
+      }
+
+      if (toggleBtn) {
+        toggleBtn.setAttribute("aria-expanded", String(!root.classList.contains("sidebar-collapsed")));
+        toggleBtn.addEventListener("click", function () {
+          applyCollapsed(!root.classList.contains("sidebar-collapsed"));
+        });
+      }
+
+      document.addEventListener("keydown", function (e) {
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === "b" || e.key === "B")) {
+          e.preventDefault();
+          applyCollapsed(!root.classList.contains("sidebar-collapsed"));
+        }
+      });
+
+      // Sunum modu: menüyü tamamen gizler (müşteriye ekran gösterirken).
+      // Kalıcı DEĞİL — sayfa geçişinde kapanır, iş mutfağı gizli kalmasın diye.
+      var presentBtn = document.getElementById("present-btn");
+      var presentExit = document.getElementById("present-exit");
+      function setPresentation(on) {
+        root.classList.toggle("presentation-mode", on);
+      }
+      if (presentBtn) presentBtn.addEventListener("click", function () { setPresentation(true); });
+      if (presentExit) presentExit.addEventListener("click", function () { setPresentation(false); });
+      document.addEventListener("keydown", function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "p" || e.key === "P" || e.key === "P".toLowerCase())) {
+          e.preventDefault();
+          setPresentation(!root.classList.contains("presentation-mode"));
+        }
+        if (e.key === "Escape" && root.classList.contains("presentation-mode")) {
+          setPresentation(false);
+        }
+      });
+
+      // Dar ekran: off-canvas menü. Durum kalıcı değil — her sayfa kapalı başlar.
+      var openBtn = document.getElementById("nav-open");
+      var backdrop = document.getElementById("sidebar-backdrop");
+
+      function setDrawer(open) {
+        root.classList.toggle("sidebar-open", open);
+      }
+
+      if (openBtn) openBtn.addEventListener("click", function () { setDrawer(true); });
+      if (backdrop) backdrop.addEventListener("click", function () { setDrawer(false); });
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") setDrawer(false);
+      });
+    })();
+    </script>
+  </body>
+  </html>

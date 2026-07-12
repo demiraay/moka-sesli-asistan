@@ -1,0 +1,32 @@
+[
+    {
+        "campaign_id": "CMP-LAUNCH",
+        "name": "Lansman İndirimi",
+        "description": "Sınırlı sayıda daire için geçerli %10 lansman indirimi.",
+        "discount_rate": 0.1,
+        "applicable": true,
+        "conditions": [
+            "first_50_units"
+        ]
+    },
+    {
+        "campaign_id": "CMP-CASH",
+        "name": "Peşin Ödeme İndirimi",
+        "description": "Tamamı peşin ödemelerde ekstra %5 indirim.",
+        "discount_rate": 0.05,
+        "applicable": true,
+        "conditions": [
+            "cash_payment"
+        ]
+    },
+    {
+        "campaign_id": "CMP-EMPLOYEE",
+        "name": "Kurumsal İndirim",
+        "description": "Anlaşmalı kurum çalışanlarına özel %2 indirim.",
+        "discount_rate": 0.02,
+        "applicable": true,
+        "conditions": [
+            "corporate_id_required"
+        ]
+    }
+]

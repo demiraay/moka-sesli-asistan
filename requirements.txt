@@ -1,0 +1,15 @@
+# Voice Agent - Python bagimliliklari
+# Kurulum: pip install -r requirements.txt
+# Not: openai-whisper icin sistemde ffmpeg kurulu olmali (macOS: brew install ffmpeg)
+
+# Web katmani (admin paneli + WhatsApp koprusu)
+Flask>=3.0
+
+# .env yapilandirmasi
+python-dotenv>=1.0
+
+# Ses -> metin (STT). Torch'u da beraberinde kurar, indirme buyuktur.
+openai-whisper>=20231117
+
+# --- Gelistirme / test ---
+pytest>=8.0

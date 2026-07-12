@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+
+{% block title %}Komuta Merkezi — {{ panel_project }}{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Komuta Merkezi</h1>
+    <p>Satis operasyonunun anlik gorunumu: lead akisi, talep ve stok.</p>
+  </div>
+
+  {% set kpis = analytics.kpis %}
+  <section class="stats-grid">
+    <article class="stat-card">
+      <span>Bugun yeni lead</span>
+      <strong>{{ kpis.new_leads_today }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Bu hafta yeni lead</span>
+      <strong>{{ kpis.new_leads_week }}</strong>
+      {% if kpis.lead_trend > 0 %}
+        <em class="trend up">▲ +{{ kpis.lead_trend }} gecen haftaya gore</em>
+      {% elif kpis.lead_trend < 0 %}
+        <em class="trend down">▼ {{ kpis.lead_trend }} gecen haftaya gore</em>
+      {% else %}
+        <em class="trend flat">— gecen haftayla ayni</em>
+      {% endif %}
+    </article>
+    <article class="stat-card">
+      <span>Aktif konusma (24s)</span>
+      <strong>{{ kpis.active_conversations }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Temsilciye devir (7g)</span>
+      <strong>{{ kpis.handoff_week }}</strong>
+    </article>
+    <article class="stat-card highlight">
+      <span>Mesai disi yakalanan lead (7g)</span>
+      <strong>{{ kpis.out_of_hours_week }}</strong>
+      <em class="trend flat">AI olmasa kacacakti</em>
+    </article>
+  </section>
+
+  <section class="inventory-band">
+    {% set inv = analytics.inventory %}
+    <div class="inventory-numbers">
+      <div><span class="dot available"></span> Satista <strong>{{ inv.available }}</strong></div>
+      <div><span class="dot reserved"></span> Rezerve <strong>{{ inv.reserved }}</strong></div>
+      <div><span class="dot sold"></span> Satildi <strong>{{ inv.sold }}</strong></div>
+      <div class="occupancy">Doluluk <strong>%{{ inv.occupancy_pct }}</strong></div>
+    </div>
+    {% if inv.total %}
+    <div class="inventory-bar">
+      <span class="seg sold" style="width: {{ (inv.sold / inv.total * 100) | round(1) }}%"></span>
+      <span class="seg reserved" style="width: {{ (inv.reserved / inv.total * 100) | round(1) }}%"></span>
+      <span class="seg available" style="width: {{ (inv.available / inv.total * 100) | round(1) }}%"></span>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="chart-grid">
+    <article class="chart-card wide">
+      <h2>Konusma hacmi — son 30 gun</h2>
+      <div id="daily-chart" class="chart-slot"></div>
+    </article>
+    <article class="chart-card">
+      <h2>Saatlik yogunluk (7g)</h2>
+      <div id="hour-chart" class="chart-slot"></div>
+    </article>
+    <article class="chart-card">
+      <h2>Tip bazli talep (AI notlari)</h2>
+      {% if analytics.demand_series %}
+        <div class="demand-list">
+          {% set max_demand = analytics.demand_series[0].count %}
+          {% for item in analytics.demand_series %}
+            <div class="demand-row">
+              <span class="demand-label">{{ item.label }}</span>
+              <span class="demand-bar"><i style="width: {{ (item.count / max_demand * 100) | round(1) }}%"></i></span>
+              <span class="demand-count">{{ item.count }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-inline">Henuz talep verisi olusmadi.</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="briefing-card" style="margin-top: 18px;">
+    <div class="notes-header" style="margin-bottom: 8px;">
+      <div>
+        <h2 style="margin: 0;">Günün Brifingi</h2>
+        {% if briefing %}<p class="muted-line" style="margin: 4px 0 0;">{{ briefing.created_label }} · AI tarafından hazırlandı</p>{% endif %}
+      </div>
+      <form method="post" action="{{ url_for('generate_briefing_route') }}">
+        <button type="submit" class="button {{ 'secondary' if briefing }} compact">
+          {{ 'Yenile' if briefing else 'Brifing Oluştur' }}
+        </button>
+      </form>
+    </div>
+    {% if briefing %}
+      <div class="briefing-content">{{ briefing.content }}</div>
+    {% else %}
+      <p class="empty-inline">Henüz brifing yok. "Brifing Oluştur" ile AI günün özetini çıkarsın (birkaç saniye sürebilir).</p>
+    {% endif %}
+  </section>
+
+  {% if followups or open_tasks %}
+    <section class="chart-card" style="margin-top: 18px;">
+      <div class="notes-header" style="margin-bottom: 8px;">
+        <h2 style="margin: 0;">Bugunun Gorevleri</h2>
+        <a class="button secondary compact" href="{{ url_for('tasks') }}">Tumunu gor</a>
+      </div>
+      <div class="task-list">
+        {% for task in followups %}
+          <div class="task-row auto">
+            <span class="task-priority {{ task.priority }}">{{ 'ACIL' if task.priority == 'high' else 'TAKIP' }}</span>
+            <div class="task-main">
+              <strong>{{ task.title }}</strong>
+              <small>{{ task.detail }}</small>
+            </div>
+          </div>
+        {% endfor %}
+        {% for task in open_tasks %}
+          <div class="task-row">
+            <span class="task-priority manual">GOREV</span>
+            <div class="task-main">
+              <strong>{{ task.title }}</strong>
+              {% if task.due_label %}<small class="{{ 'overdue-label' if task.overdue }}">Son gun: {{ task.due_label }}</small>{% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="dashboard-columns">
+    <article class="chart-card">
+      <h2>Sicak lead'ler</h2>
+      {% if analytics.hot_leads %}
+        <div class="hot-lead-list">
+          {% for lead in analytics.hot_leads %}
+            <a class="hot-lead-row" href="{{ url_for('user_conversations', user_id=lead.user_id) }}">
+              <span class="temp-badge {{ lead.temperature }}">{{ 'SICAK' if lead.temperature == 'hot' else ('ILIK' if lead.temperature == 'warm' else 'SOGUK') }}</span>
+              <span class="hot-lead-main">
+                <strong>{{ lead.name or lead.user_id }}</strong>
+                <small>{{ lead.summary[:80] or '—' }}</small>
+              </span>
+              <span class="hot-lead-meta">
+                {% if lead.preferred_flat_type %}<em>{{ lead.preferred_flat_type }}</em>{% endif %}
+                {% if lead.handoff_required %}<em class="handoff-flag">devir bekliyor</em>{% endif %}
+              </span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-inline">Skorlanacak lead yok — konusmalar basladikca burasi dolacak.</p>
+      {% endif %}
+    </article>
+
+    <article class="chart-card">
+      <h2>Son aktivite</h2>
+      {% if analytics.recent_turns %}
+        <div class="activity-feed">
+          {% for turn in analytics.recent_turns %}
+            <a class="activity-row" href="{{ url_for('conversation_detail', session_id=turn.session_id) }}">
+              <span class="activity-time">{{ turn.created_at }}</span>
+              <span class="channel-pill {{ 'whatsapp' if turn.channel == 'whatsapp' else 'default' }}">{{ turn.channel }}</span>
+              <span class="activity-text">{{ turn.user_id }}: {{ turn.snippet }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-inline">Henuz konusma yok.</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="notes-card">
+    <div class="notes-header">
+      <div>
+        <h2>Satis Profili</h2>
+        <p>Handoff sirasinda kullanilan dinamik iletisim bilgileri.</p>
+      </div>
+      <a class="button secondary" href="{{ url_for('sales_profile') }}">Duzenle</a>
+    </div>
+    {% if sales_profile.consultant_name or sales_profile.office_name or sales_profile.phone_number %}
+      <div class="notes-grid">
+        <article class="note-chip">
+          <span>Danisman</span>
+          <strong>{{ sales_profile.consultant_name or "-" }}</strong>
+        </article>
+        <article class="note-chip">
+          <span>Unvan</span>
+          <strong>{{ sales_profile.consultant_title or "-" }}</strong>
+        </article>
+        <article class="note-chip">
+          <span>Ofis</span>
+          <strong>{{ sales_profile.office_name or "-" }}</strong>
+        </article>
+        <article class="note-chip">
+          <span>Telefon</span>
+          <strong>{{ sales_profile.phone_number or sales_profile.whatsapp_number or "-" }}</strong>
+        </article>
+      </div>
+    {% else %}
+      <p class="empty-inline">Henuz satis profili tanimlanmadi.</p>
+    {% endif %}
+  </section>
+
+<script>
+  const dailySeries = {{ analytics.daily_series | tojson }};
+  const hourHistogram = {{ analytics.hour_histogram | tojson }};
+
+  function renderLineChart(slotId, series) {
+    const slot = document.getElementById(slotId);
+    const w = 640, h = 180, pad = 24;
+    const max = Math.max(1, ...series.map(p => p.count));
+    const stepX = (w - pad * 2) / Math.max(1, series.length - 1);
+    const points = series.map((p, i) => {
+      const x = pad + i * stepX;
+      const y = h - pad - (p.count / max) * (h - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    const gridY = h - pad;
+    const labelStart = series.length ? series[0].date.slice(5) : "";
+    const labelEnd = series.length ? series[series.length - 1].date.slice(5) : "";
+    slot.innerHTML = `
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <line x1="${pad}" y1="${gridY}" x2="${w - pad}" y2="${gridY}" class="axis"/>
+        <polyline points="${points.join(" ")}" class="line"/>
+        <text x="${pad}" y="${h - 6}" class="tick">${labelStart}</text>
+        <text x="${w - pad}" y="${h - 6}" class="tick" text-anchor="end">${labelEnd}</text>
+        <text x="${pad}" y="${pad - 8}" class="tick">maks ${max}</text>
+      </svg>`;
+  }
+
+  function renderBarChart(slotId, values) {
+    const slot = document.getElementById(slotId);
+    const w = 340, h = 180, pad = 20;
+    const max = Math.max(1, ...values);
+    const barW = (w - pad * 2) / values.length;
+    let bars = "";
+    values.forEach((v, i) => {
+      const barH = (v / max) * (h - pad * 2);
+      const x = pad + i * barW;
+      const y = h - pad - barH;
+      const cls = (i >= 9 && i < 18) ? "bar office" : "bar";
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, barW - 2).toFixed(1)}" height="${Math.max(0.5, barH).toFixed(1)}" class="${cls}"/>`;
+    });
+    slot.innerHTML = `
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        ${bars}
+        <text x="${pad}" y="${h - 4}" class="tick">00</text>
+        <text x="${w / 2}" y="${h - 4}" class="tick" text-anchor="middle">12</text>
+        <text x="${w - pad}" y="${h - 4}" class="tick" text-anchor="end">23</text>
+      </svg>
+      <p class="chart-note">Koyu cubuklar mesai saati (09-18); acik olanlar AI'in tek basina karsiladigi saatler.</p>`;
+  }
+
+  renderLineChart("daily-chart", dailySeries);
+  renderBarChart("hour-chart", hourHistogram);
+</script>
+{% endblock %}

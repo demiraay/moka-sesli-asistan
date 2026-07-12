@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Gorevler — {{ panel_project }}{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Gorevler &amp; Takip</h1>
+    <p>Ust liste veriden otomatik uretilir; alta kendi gorevlerinizi ekleyebilirsiniz.</p>
+  </div>
+
+  <section class="chart-card" style="margin-bottom: 18px;">
+    <h2>Otomatik Takip Listesi <em class="kanban-count">{{ followups | length }}</em></h2>
+    {% if followups %}
+      <div class="task-list">
+        {% for task in followups %}
+          <div class="task-row auto">
+            <span class="task-priority {{ task.priority }}">{{ 'ACIL' if task.priority == 'high' else 'TAKIP' }}</span>
+            <div class="task-main">
+              <strong>{{ task.title }}</strong>
+              <small>{{ task.detail }}</small>
+            </div>
+            {% if task.user_id %}
+              <a class="button secondary compact" href="{{ url_for('user_conversations', user_id=task.user_id) }}">Musteri</a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty-inline">Su an bekleyen otomatik takip yok — her sey yolunda 🎉</p>
+    {% endif %}
+  </section>
+
+  <section class="chart-card">
+    <h2>Manuel Gorevler</h2>
+    <form method="post" action="{{ url_for('tasks') }}" class="task-form">
+      <input type="text" name="title" placeholder="Gorev basligi (orn. B blok fiyat listesini guncelle)" required maxlength="200">
+      <input type="text" name="user_id" placeholder="Iliskili musteri (opsiyonel)">
+      <input type="date" name="due_at">
+      <button type="submit" class="button">Ekle</button>
+    </form>
+
+    {% if manual_tasks %}
+      <div class="task-list" style="margin-top: 14px;">
+        {% for task in manual_tasks %}
+          <div class="task-row {{ 'done' if task.done }}">
+            <form method="post" action="{{ url_for('toggle_task', task_id=task.id) }}">
+              <input type="hidden" name="done" value="{{ '0' if task.done else '1' }}">
+              <button type="submit" class="task-check {{ 'checked' if task.done }}" title="{{ 'Geri al' if task.done else 'Tamamla' }}">
+                {{ '✓' if task.done else '' }}
+              </button>
+            </form>
+            <div class="task-main">
+              <strong>{{ task.title }}</strong>
+              <small>
+                {% if task.due_label %}<span class="{{ 'overdue-label' if task.overdue }}">Son gun: {{ task.due_label }}{{ ' — GECIKTI' if task.overdue }}</span>{% endif %}
+                {% if task.user_id %} · {{ task.user_id }}{% endif %}
+              </small>
+            </div>
+            {% if task.user_id %}
+              <a class="button secondary compact" href="{{ url_for('user_conversations', user_id=task.user_id) }}">Musteri</a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty-inline" style="margin-top: 12px;">Henuz manuel gorev yok.</p>
+    {% endif %}
+  </section>
+{% endblock %}

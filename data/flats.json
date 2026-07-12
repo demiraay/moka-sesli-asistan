@@ -1,0 +1,37 @@
+[
+    {
+        "flat_type_id": "FT-1P1",
+        "label": "1+1",
+        "net_m2": 65,
+        "gross_m2": 85,
+        "description": "City Suite"
+    },
+    {
+        "flat_type_id": "FT-2P1",
+        "label": "2+1",
+        "net_m2": 95,
+        "gross_m2": 120,
+        "description": "Comfort Home"
+    },
+    {
+        "flat_type_id": "FT-3P1",
+        "label": "3+1",
+        "net_m2": 135,
+        "gross_m2": 165,
+        "description": "Family Residence"
+    },
+    {
+        "flat_type_id": "FT-4P1",
+        "label": "4+1",
+        "net_m2": 180,
+        "gross_m2": 210,
+        "description": "Grand Family"
+    },
+    {
+        "flat_type_id": "FT-DUP",
+        "label": "5+1 Duplex",
+        "net_m2": 250,
+        "gross_m2": 300,
+        "description": "Sky Villa"
+    }
+]

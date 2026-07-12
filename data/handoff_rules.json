@@ -1,0 +1,15 @@
+{
+    "handoff_conditions": [
+        "request_visit",
+        "ask_for_callback",
+        "price_repeated_twice",
+        "high_intent_detected",
+        "asked_about_payment_plan",
+        "ready_to_buy"
+    ],
+    "required_info_for_handoff": [
+        "name",
+        "phone_number",
+        "interested_flat_type"
+    ]
+}

@@ -1,0 +1,778 @@
+{% extends "base.html" %}
+
+{% block title %}Stok Panosu — {{ panel_project }}{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Stok Panosu</h1>
+    <p>Blok / kat / daire matrisi — tek bakista satis durumu. Hucreye tiklayip durumu yonetin.</p>
+  </div>
+
+  <section class="inventory-band">
+    <div class="inventory-numbers">
+      <div><span class="dot available"></span> Satista <strong>{{ board.totals.available }}</strong></div>
+      <div><span class="dot reserved"></span> Rezerve <strong>{{ board.totals.reserved }}</strong></div>
+      <div><span class="dot sold"></span> Satildi <strong>{{ board.totals.sold }}</strong></div>
+      <div class="occupancy">Genel doluluk <strong>%{{ board.occupancy_pct }}</strong></div>
+    </div>
+    <div class="stock-search">
+      <input type="text" id="stock-search" autocomplete="off"
+             placeholder="Ara: 1204, A-101, INV-0064, 0540...">
+      <span class="search-counter" id="search-counter" hidden></span>
+      <button type="button" class="search-clear" id="search-clear" hidden aria-label="Aramayi temizle">&times;</button>
+      <a class="button secondary compact" href="{{ url_for('export_stock_csv') }}">CSV</a>
+      <button type="button" class="button secondary compact" id="stock-print">Yazdir</button>
+    </div>
+    <div class="stock-filters">
+      <div class="filter-group" id="status-filters">
+        <span class="filter-title">Durum:</span>
+        <button type="button" class="filter-chip active" data-status="all">Tumu</button>
+        <button type="button" class="filter-chip" data-status="available">Satista</button>
+        <button type="button" class="filter-chip" data-status="reserved">Rezerve</button>
+        <button type="button" class="filter-chip" data-status="sold">Satildi</button>
+      </div>
+      <div class="filter-group" id="type-filters">
+        <span class="filter-title">Tip:</span>
+        <button type="button" class="filter-chip active" data-type="all">Tumu</button>
+        {% for flat_type in board.flat_types %}
+          <button type="button" class="filter-chip" data-type="{{ flat_type }}">{{ flat_type }}</button>
+        {% endfor %}
+      </div>
+      <div class="filter-group" id="direction-filters">
+        <span class="filter-title">Cephe:</span>
+        <button type="button" class="filter-chip active" data-direction="all">Tumu</button>
+        {% for direction in board.directions %}
+          <button type="button" class="filter-chip" data-direction="{{ direction }}">{{ direction | direction_tr }}</button>
+        {% endfor %}
+      </div>
+      <div class="filter-group" id="sun-filters">
+        <span class="filter-title">Gunes:</span>
+        <button type="button" class="filter-chip active" data-sun="all">Tumu</button>
+        {% for sun in board.sun_exposures %}
+          <button type="button" class="filter-chip" data-sun="{{ sun }}">{{ sun | sun_tr }}</button>
+        {% endfor %}
+      </div>
+      <div class="filter-group range-group">
+        <span class="filter-title">Kat:</span>
+        <input type="number" id="floor-min" class="range-input" placeholder="min" min="{{ board.floor_range.min }}" max="{{ board.floor_range.max }}">
+        <span class="range-sep">–</span>
+        <input type="number" id="floor-max" class="range-input" placeholder="max" min="{{ board.floor_range.min }}" max="{{ board.floor_range.max }}">
+        <span class="filter-title">Fiyat (M):</span>
+        <input type="number" id="price-min" class="range-input" placeholder="min" step="0.5">
+        <span class="range-sep">–</span>
+        <input type="number" id="price-max" class="range-input" placeholder="max" step="0.5">
+        <button type="button" class="filter-chip" id="filter-reset">Sifirla</button>
+        <span class="filter-count" id="filter-count"></span>
+      </div>
+    </div>
+  </section>
+
+  {% if board.type_summary %}
+    <section class="type-summary-strip">
+      <span class="strip-label">Satistaki stok</span>
+      {% for item in board.type_summary %}
+        <button type="button" class="type-summary-chip" data-type="{{ item.label }}">
+          <strong>{{ item.label }}</strong>
+          <span class="ts-available">{{ item.available }}</span>
+          <span class="ts-total">/ {{ item.total }}</span>
+          {% if item.avg_price_short and item.avg_price_short != '—' %}
+            <em class="ts-price">ort. {{ item.avg_price_short }}</em>
+          {% endif %}
+        </button>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  {% if board.expiring_options %}
+    <section class="expiring-strip">
+      <span class="strip-label warn">⏳ Yakinda dolan opsiyon ({{ board.expiring_options | length }})</span>
+      {% for opt in board.expiring_options %}
+        <button type="button" class="expiring-chip" data-goto="{{ opt.block_id }}-{{ opt.door_number }}">
+          {{ opt.block_id }}-{{ opt.door_number }}
+          <span class="exp-remaining">{{ opt.remaining_label }}</span>
+        </button>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  <section class="analytics-row">
+    <div class="velocity-card">
+      <span class="strip-label">Satis hizi</span>
+      {% if velocity.has_data %}
+        <div class="velocity-main">
+          <strong>{{ velocity.sold_last_n }}</strong> satis / son {{ velocity.days }} gun
+          <span class="cell-sub">(~{{ velocity.per_week }}/hafta)</span>
+        </div>
+        {% if velocity.absorption_months %}
+          <div class="cell-sub">Bu hizla {{ velocity.available_now }} daire ~<strong>{{ velocity.absorption_months }} ayda</strong> erir</div>
+        {% else %}
+          <div class="cell-sub">Absorpsiyon icin daha fazla satis verisi gerek</div>
+        {% endif %}
+      {% else %}
+        <div class="cell-sub">Henuz satis verisi birikmedi — durum degisiklikleri kaydedildikce bu kart dolacak.</div>
+      {% endif %}
+    </div>
+
+    {% if type_pressure %}
+      <div class="pressure-card">
+        <span class="strip-label">Talep / Stok baskisi</span>
+        <div class="pressure-chips">
+          {% for row in type_pressure %}
+            <span class="pressure-chip{{ ' hot' if row.stock == 0 and row.demand or (row.pressure is number and row.pressure >= 0.5) }}">
+              {{ row.label }}: <strong>{{ row.demand }}</strong> talep / {{ row.stock }} stok
+            </span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="heatmap-bar">
+    <div class="heatmap-modes" id="heatmap-modes">
+      <span class="filter-title">Renk:</span>
+      <button type="button" class="filter-chip active" data-mode="status">Durum</button>
+      <button type="button" class="filter-chip" data-mode="price">Fiyat</button>
+      <button type="button" class="filter-chip" data-mode="demand">Talep</button>
+    </div>
+    <div class="heatmap-legend" id="legend-status">
+      <span class="lg-item"><span class="lg-swatch available"></span> Satista</span>
+      <span class="lg-item"><span class="lg-swatch reserved"></span> Rezerve</span>
+      <span class="lg-item"><span class="lg-swatch sold"></span> Satildi</span>
+    </div>
+    <div class="heatmap-legend" id="legend-price" hidden>
+      <span class="lg-label">Ucuz</span>
+      <span class="lg-swatch pb1"></span><span class="lg-swatch pb2"></span>
+      <span class="lg-swatch pb3"></span><span class="lg-swatch pb4"></span><span class="lg-swatch pb5"></span>
+      <span class="lg-label">Pahali</span>
+    </div>
+    <div class="heatmap-legend" id="legend-demand" hidden>
+      <span class="lg-label">Talep yok</span>
+      <span class="lg-swatch db0"></span><span class="lg-swatch db1"></span>
+      <span class="lg-swatch db2"></span><span class="lg-swatch db3"></span>
+      <span class="lg-label">Yuksek talep</span>
+    </div>
+  </section>
+
+  <div class="block-tabs" id="block-tabs">
+    {% for block in board.blocks %}
+      <button type="button" class="block-tab {{ 'active' if loop.first }}" data-block="{{ block.block_id }}">
+        {{ block.block_id }} Blok
+        <small>%{{ block.occupancy_pct }} dolu &middot; {{ block.counts.available }} satista</small>
+      </button>
+    {% endfor %}
+  </div>
+
+  {% for block in board.blocks %}
+    <section class="stock-block {{ 'active' if loop.first }}" data-block="{{ block.block_id }}">
+      <div class="stock-grid-wrap">
+        <table class="stock-grid">
+          <tbody>
+            {% for row in block.floors %}
+              <tr>
+                <th class="floor-label">
+                  {{ row.floor }}. kat
+                  <small>{{ row.counts.available }}/{{ row.counts.total }} bos</small>
+                </th>
+                {% for unit in row.units %}
+                  <td>
+                    <button type="button"
+                            class="unit-cell {{ unit.status }}"
+                            data-status="{{ unit.status }}"
+                            data-type="{{ unit.flat_label }}"
+                            data-inv="{{ unit.inventory_id }}"
+                            data-door="{{ unit.door_number }}"
+                            data-block="{{ unit.block_id }}"
+                            data-floor="{{ unit.floor }}"
+                            data-direction="{{ unit.direction }}"
+                            data-sun="{{ unit.sun_exposure }}"
+                            data-price="{{ unit.list_price_try or 0 }}"
+                            data-price-band="{{ unit.price_band }}"
+                            data-demand-band="{{ unit.demand_band }}"
+                            data-demand-count="{{ unit.demand_count }}"
+                            data-expiring="{{ '1' if unit.expiring_soon else '0' }}"
+                            data-res-user="{{ unit.reservation.user_id if unit.reservation else '' }}"
+                            data-unit='{{ {
+                              "inventory_id": unit.inventory_id,
+                              "door_number": unit.door_number,
+                              "flat_label": unit.flat_label,
+                              "status": unit.status,
+                              "direction": unit.direction,
+                              "sun_exposure": unit.sun_exposure,
+                              "sun_hours": unit.sun_hours,
+                              "net_m2": unit.net_m2,
+                              "gross_m2": unit.gross_m2,
+                              "list_price_try": unit.list_price_try,
+                              "price_short": unit.price_short,
+                              "demand_count": unit.demand_count,
+                              "floor": row.floor,
+                              "block_id": block.block_id,
+                              "reservation": unit.reservation
+                            } | tojson | e }}'>
+                      {% if unit.expiring_soon %}<span class="expiring-mark" title="Opsiyon 24 saat icinde doluyor">⏳</span>{% endif %}
+                      <strong>{{ unit.door_number }}</strong>
+                      <span>{{ unit.flat_label }}</span>
+                      <em>{{ unit.price_short }}</em>
+                      {% if unit.reservation %}
+                        <i class="reservation-tag">{{ 'OPS ' ~ unit.reservation.remaining_label if unit.reservation.kind == 'option' else 'KAPORA' }}</i>
+                      {% endif %}
+                    </button>
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endfor %}
+
+  <div class="cell-tip" id="cell-tip" hidden></div>
+
+  <div class="unit-panel-backdrop" id="unit-backdrop"></div>
+  <aside class="unit-panel" id="unit-panel">
+    <div class="unit-panel-header">
+      <div>
+        <h2 id="unit-title">—</h2>
+        <p id="unit-subtitle" class="muted-line">—</p>
+      </div>
+      <button type="button" class="button secondary compact" id="unit-close">Kapat</button>
+    </div>
+    <div class="notes-grid">
+      <article class="note-chip"><span>Durum</span><strong id="unit-status">—</strong></article>
+      <article class="note-chip"><span>Fiyat</span><strong id="unit-price">—</strong></article>
+      <article class="note-chip"><span>Cephe</span><strong id="unit-direction">—</strong></article>
+      <article class="note-chip"><span>Gunes</span><strong id="unit-sun">—</strong></article>
+    </div>
+    <div class="unit-reservation" id="unit-reservation-info" hidden>
+      <div class="reservation-banner">
+        <strong id="reservation-kind">—</strong>
+        <span id="reservation-detail">—</span>
+      </div>
+      <div class="unit-status-buttons">
+        <button type="button" class="button compact" id="btn-convert-deposit">Kaporaya cevir</button>
+        <button type="button" class="button secondary compact" id="btn-release">Serbest birak</button>
+        <button type="button" class="button danger compact" id="btn-mark-sold">Satildi isaretle</button>
+      </div>
+    </div>
+
+    <div class="unit-reservation" id="unit-reservation-forms" hidden>
+      <span class="filter-title">Opsiyon / Kapora:</span>
+      <div class="reservation-form">
+        <input type="text" id="res-user" placeholder="Musteri (tel/isim, opsiyonel)">
+        <div class="reservation-form-row">
+          <select id="res-hours">
+            <option value="24">24 saat</option>
+            <option value="48" selected>48 saat</option>
+            <option value="72">72 saat</option>
+          </select>
+          <button type="button" class="button compact" id="btn-place-option">Opsiyon koy</button>
+        </div>
+        <div class="reservation-form-row">
+          <input type="text" id="res-amount" placeholder="Kapora tutari (TL)">
+          <button type="button" class="button compact" id="btn-place-deposit">Kapora al</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="unit-actions">
+      <span class="filter-title">Durumu degistir:</span>
+      <div class="unit-status-buttons">
+        <button type="button" class="button compact status-btn" data-status="available">Satista</button>
+        <button type="button" class="button compact status-btn" data-status="reserved">Rezerve</button>
+        <button type="button" class="button compact danger status-btn" data-status="sold">Satildi</button>
+      </div>
+      <div class="unit-status-buttons">
+        <a class="button compact" id="unit-offer-link" href="#">Teklif olustur</a>
+        <a class="button secondary compact" id="unit-edit-link" href="#">Tum alanlari duzenle</a>
+      </div>
+    </div>
+    <p class="chart-note" id="unit-feedback"></p>
+  </aside>
+
+<script>
+  const TR_STATUS = { available: "Satista", reserved: "Rezerve", sold: "Satildi" };
+  let activeUnit = null;
+  let activeCell = null;
+
+  // --- Blok sekmeleri ---
+  function switchToBlock(blockId) {
+    const tab = document.querySelector(`.block-tab[data-block="${blockId}"]`);
+    const block = document.querySelector(`.stock-block[data-block="${blockId}"]`);
+    if (!tab || !block) return;
+    document.querySelectorAll(".block-tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".stock-block").forEach(b => b.classList.remove("active"));
+    tab.classList.add("active");
+    block.classList.add("active");
+  }
+
+  document.querySelectorAll(".block-tab").forEach((tab) => {
+    tab.addEventListener("click", () => switchToBlock(tab.dataset.block));
+  });
+
+  // --- Filtreler ---
+  const filterState = {
+    status: "all", type: "all", direction: "all", sun: "all",
+    floorMin: "", floorMax: "", priceMin: "", priceMax: "",
+  };
+  const filterCount = document.getElementById("filter-count");
+
+  function applyFilters() {
+    const fMin = filterState.floorMin === "" ? -Infinity : parseInt(filterState.floorMin, 10);
+    const fMax = filterState.floorMax === "" ? Infinity : parseInt(filterState.floorMax, 10);
+    const pMin = filterState.priceMin === "" ? -Infinity : parseFloat(filterState.priceMin) * 1e6;
+    const pMax = filterState.priceMax === "" ? Infinity : parseFloat(filterState.priceMax) * 1e6;
+    let visible = 0;
+    document.querySelectorAll(".unit-cell").forEach((cell) => {
+      const floor = parseInt(cell.dataset.floor, 10);
+      const price = parseInt(cell.dataset.price, 10) || 0;
+      const ok =
+        (filterState.status === "all" || cell.dataset.status === filterState.status) &&
+        (filterState.type === "all" || cell.dataset.type === filterState.type) &&
+        (filterState.direction === "all" || cell.dataset.direction === filterState.direction) &&
+        (filterState.sun === "all" || cell.dataset.sun === filterState.sun) &&
+        (floor >= fMin && floor <= fMax) &&
+        (price === 0 || (price >= pMin && price <= pMax));
+      cell.classList.toggle("dimmed", !ok);
+      if (ok) visible += 1;
+    });
+    const active = filterState.status !== "all" || filterState.type !== "all" ||
+      filterState.direction !== "all" || filterState.sun !== "all" ||
+      filterState.floorMin || filterState.floorMax || filterState.priceMin || filterState.priceMax;
+    filterCount.textContent = active ? `${visible} daire` : "";
+    syncFiltersToUrl();
+  }
+
+  function syncFiltersToUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const keys = { status: "st", type: "tip", direction: "cephe", sun: "gunes",
+      floorMin: "kat_min", floorMax: "kat_max", priceMin: "fiyat_min", priceMax: "fiyat_max" };
+    Object.keys(keys).forEach((key) => {
+      const val = filterState[key];
+      if (val && val !== "all") params.set(keys[key], val);
+      else params.delete(keys[key]);
+    });
+    const qs = params.toString();
+    history.replaceState(null, "", qs ? "?" + qs : window.location.pathname);
+  }
+
+  function setChipActive(groupId, dataAttr, value) {
+    document.querySelectorAll(`#${groupId} .filter-chip`).forEach((chip) => {
+      chip.classList.toggle("active", (chip.dataset[dataAttr] || "all") === value);
+    });
+  }
+
+  function bindFilterGroup(groupId, key, dataAttr) {
+    document.querySelectorAll(`#${groupId} .filter-chip`).forEach((chip) => {
+      chip.addEventListener("click", () => {
+        filterState[key] = chip.dataset[dataAttr];
+        setChipActive(groupId, dataAttr, filterState[key]);
+        applyFilters();
+      });
+    });
+  }
+  bindFilterGroup("status-filters", "status", "status");
+  bindFilterGroup("type-filters", "type", "type");
+  bindFilterGroup("direction-filters", "direction", "direction");
+  bindFilterGroup("sun-filters", "sun", "sun");
+
+  const rangeInputs = {
+    floorMin: document.getElementById("floor-min"),
+    floorMax: document.getElementById("floor-max"),
+    priceMin: document.getElementById("price-min"),
+    priceMax: document.getElementById("price-max"),
+  };
+  Object.keys(rangeInputs).forEach((key) => {
+    rangeInputs[key].addEventListener("input", () => {
+      filterState[key] = rangeInputs[key].value.trim();
+      applyFilters();
+    });
+  });
+
+  document.getElementById("filter-reset").addEventListener("click", () => {
+    Object.assign(filterState, { status: "all", type: "all", direction: "all", sun: "all",
+      floorMin: "", floorMax: "", priceMin: "", priceMax: "" });
+    setChipActive("status-filters", "status", "all");
+    setChipActive("type-filters", "type", "all");
+    setChipActive("direction-filters", "direction", "all");
+    setChipActive("sun-filters", "sun", "all");
+    Object.values(rangeInputs).forEach(inp => (inp.value = ""));
+    applyFilters();
+  });
+
+  // URL'den filtre durumunu geri yukle (paylasilabilir gorunum + reload dayanikli)
+  (function restoreFilters() {
+    const params = new URLSearchParams(window.location.search);
+    const map = { st: "status", tip: "type", cephe: "direction", gunes: "sun",
+      kat_min: "floorMin", kat_max: "floorMax", fiyat_min: "priceMin", fiyat_max: "priceMax" };
+    let any = false;
+    Object.keys(map).forEach((param) => {
+      const val = params.get(param);
+      if (val) { filterState[map[param]] = val; any = true; }
+    });
+    if (!any) return;
+    setChipActive("status-filters", "status", filterState.status);
+    setChipActive("type-filters", "type", filterState.type);
+    setChipActive("direction-filters", "direction", filterState.direction);
+    setChipActive("sun-filters", "sun", filterState.sun);
+    rangeInputs.floorMin.value = filterState.floorMin;
+    rangeInputs.floorMax.value = filterState.floorMax;
+    rangeInputs.priceMin.value = filterState.priceMin;
+    rangeInputs.priceMax.value = filterState.priceMax;
+    applyFilters();
+  })();
+
+  // --- Arama + atlama ---
+  const allCells = Array.prototype.slice.call(document.querySelectorAll(".unit-cell"));
+  const searchInput = document.getElementById("stock-search");
+  const searchCounter = document.getElementById("search-counter");
+  const searchClear = document.getElementById("search-clear");
+  let searchHits = [];
+  let searchPos = -1;
+
+  // "INV-0064" / "0064" / "64" -> "64"; kapi + blok eslestirme icin ayirir.
+  function parseQuery(raw) {
+    const text = raw.trim().toLowerCase();
+    if (!text) return null;
+    // Blok + kapi: "a-101", "a 101", "a101"
+    const blockMatch = text.match(/^([a-e])[\s-]*(\d{1,4})$/i);
+    if (blockMatch) {
+      return { block: blockMatch[1].toUpperCase(), door: blockMatch[2] };
+    }
+    // INV kimligi
+    if (text.startsWith("inv")) {
+      return { inv: text.replace(/[^0-9]/g, "") };
+    }
+    // Telefon: + ile baslar ya da 5+ rakam (kapi no en fazla 4 hane)
+    var digits = text.replace(/[^0-9]/g, "");
+    if (raw.trim().charAt(0) === "+" || digits.length >= 5) {
+      return { phone: digits };
+    }
+    // Sadece rakam -> kapi no (veya INV numarasi)
+    if (/^\d+$/.test(text)) {
+      return { door: text, invNum: text };
+    }
+    return { free: text };
+  }
+
+  function cellMatches(cell, q) {
+    if (q.block && q.door) {
+      return cell.dataset.block.toUpperCase() === q.block && cell.dataset.door === q.door;
+    }
+    if (q.inv) {
+      return cell.dataset.inv.replace(/[^0-9]/g, "") === q.inv;
+    }
+    if (q.phone) {
+      var resUser = (cell.dataset.resUser || "").replace(/[^0-9]/g, "");
+      return resUser !== "" && resUser.indexOf(q.phone) !== -1;
+    }
+    if (q.door) {
+      const invNum = cell.dataset.inv.replace(/[^0-9]/g, "").replace(/^0+/, "");
+      return cell.dataset.door === q.door
+        || invNum === (q.invNum || "").replace(/^0+/, "");
+    }
+    if (q.free) {
+      return (cell.dataset.inv + " " + cell.dataset.block + " " + cell.dataset.door
+        + " " + cell.dataset.type).toLowerCase().includes(q.free);
+    }
+    return false;
+  }
+
+  function clearSearch() {
+    allCells.forEach(c => c.classList.remove("search-hit", "pulse"));
+    searchHits = [];
+    searchPos = -1;
+    searchCounter.hidden = true;
+    searchClear.hidden = true;
+  }
+
+  function gotoHit(index) {
+    if (!searchHits.length) return;
+    searchPos = (index + searchHits.length) % searchHits.length;
+    const cell = searchHits[searchPos];
+    switchToBlock(cell.dataset.block);
+    allCells.forEach(c => c.classList.remove("pulse"));
+    cell.classList.add("pulse");
+    cell.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    searchCounter.textContent = (searchPos + 1) + " / " + searchHits.length;
+  }
+
+  function runSearch(navigate) {
+    const q = parseQuery(searchInput.value);
+    allCells.forEach(c => c.classList.remove("search-hit", "pulse"));
+    if (!q) { clearSearch(); return; }
+    searchHits = allCells.filter(c => cellMatches(c, q));
+    searchHits.forEach(c => c.classList.add("search-hit"));
+    searchClear.hidden = false;
+    if (searchHits.length) {
+      searchCounter.hidden = false;
+      if (navigate) gotoHit(0);
+      else searchCounter.textContent = searchHits.length + " sonuc";
+    } else {
+      searchCounter.hidden = false;
+      searchCounter.textContent = "sonuc yok";
+    }
+  }
+
+  searchInput.addEventListener("input", () => runSearch(false));
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (searchHits.length && searchPos >= 0) gotoHit(searchPos + 1);
+      else runSearch(true);
+    } else if (e.key === "Escape") {
+      searchInput.value = "";
+      clearSearch();
+    }
+  });
+  searchClear.addEventListener("click", () => {
+    searchInput.value = "";
+    clearSearch();
+    searchInput.focus();
+  });
+
+  // Derin baglanti: ?q=INV-0064 ile gelince otomatik ara + atla
+  const urlQuery = new URLSearchParams(window.location.search).get("q");
+  if (urlQuery) {
+    searchInput.value = urlQuery;
+    runSearch(true);
+  }
+
+  // --- Analiz seridi ---
+  // Tip ozet cipi -> ilgili tip filtresini tetikle
+  document.querySelectorAll(".type-summary-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const target = document.querySelector(`#type-filters .filter-chip[data-type="${chip.dataset.type}"]`);
+      if (target) {
+        target.click();
+        target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+  });
+
+  // Yakinda dolan opsiyon cipi -> hucreye atla
+  document.querySelectorAll(".expiring-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      searchInput.value = chip.dataset.goto;
+      runSearch(true);
+    });
+  });
+
+  // Yazdirma: tum bloklar alt alta acilsin (print CSS bunu gorunur kilar)
+  document.getElementById("stock-print").addEventListener("click", () => window.print());
+
+  // --- Isi haritasi modu (durum / fiyat / talep) ---
+  function setHeatmapMode(mode) {
+    document.body.dataset.stockMode = mode;
+    document.querySelectorAll("#heatmap-modes .filter-chip").forEach((chip) => {
+      chip.classList.toggle("active", chip.dataset.mode === mode);
+    });
+    ["status", "price", "demand"].forEach((m) => {
+      const legend = document.getElementById("legend-" + m);
+      if (legend) legend.hidden = m !== mode;
+    });
+    const params = new URLSearchParams(window.location.search);
+    if (mode === "status") params.delete("mode");
+    else params.set("mode", mode);
+    const qs = params.toString();
+    history.replaceState(null, "", qs ? "?" + qs : window.location.pathname);
+  }
+
+  document.querySelectorAll("#heatmap-modes .filter-chip").forEach((chip) => {
+    chip.addEventListener("click", () => setHeatmapMode(chip.dataset.mode));
+  });
+
+  const urlMode = new URLSearchParams(window.location.search).get("mode");
+  setHeatmapMode(urlMode === "price" || urlMode === "demand" ? urlMode : "status");
+
+  // --- Hover tooltip (dokunmatikte kapali) ---
+  const canHover = window.matchMedia("(hover: hover)").matches;
+  if (canHover) {
+    const TR_DIR = { North: "Kuzey", South: "Guney", East: "Dogu", West: "Bati",
+      "North-East": "Kuzeydogu", "North-West": "Kuzeybati", "South-East": "Guneydogu", "South-West": "Guneybati" };
+    const TR_SUN = { high: "Yuksek", medium: "Orta", low: "Az", none: "Almiyor" };
+    const tip = document.getElementById("cell-tip");
+
+    function buildTip(unit) {
+      const rows = [];
+      rows.push(`<strong>${unit.block_id}-${unit.door_number}</strong> · ${unit.flat_label}`);
+      if (unit.net_m2) rows.push(`${unit.net_m2}/${unit.gross_m2 || "?"} m² (net/brut)`);
+      rows.push("Cephe: " + (TR_DIR[unit.direction] || unit.direction || "—"));
+      let sun = TR_SUN[unit.sun_exposure] || unit.sun_exposure || "—";
+      if (unit.sun_hours) sun += ` · ${unit.sun_hours} sa`;
+      rows.push("Gunes: " + sun);
+      rows.push("Fiyat: " + (unit.list_price_try ? new Intl.NumberFormat("tr-TR").format(unit.list_price_try) + " TL" : "—"));
+      if (unit.demand_count) rows.push(`Talep: ${unit.demand_count} eslesen lead`);
+      if (unit.reservation) {
+        const r = unit.reservation;
+        rows.push(r.kind === "option"
+          ? `Opsiyon · kalan ${r.remaining_label || "?"}${r.expires_at ? " (" + r.expires_at + ")" : ""}`
+          : "Kapora kayitli");
+      }
+      return rows.map((line, i) => i === 0 ? `<div>${line}</div>` : `<div class="tip-row">${line}</div>`).join("");
+    }
+
+    function positionTip(event) {
+      const pad = 14;
+      let x = event.clientX + pad;
+      let y = event.clientY + pad;
+      const rect = tip.getBoundingClientRect();
+      if (x + rect.width > window.innerWidth - 8) x = event.clientX - rect.width - pad;
+      if (y + rect.height > window.innerHeight - 8) y = event.clientY - rect.height - pad;
+      tip.style.left = x + "px";
+      tip.style.top = y + "px";
+    }
+
+    document.querySelectorAll(".unit-cell").forEach((cell) => {
+      cell.addEventListener("mouseenter", () => {
+        try {
+          tip.innerHTML = buildTip(JSON.parse(cell.dataset.unit));
+          tip.hidden = false;
+        } catch (e) { tip.hidden = true; }
+      });
+      cell.addEventListener("mousemove", positionTip);
+      cell.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+  }
+
+  // --- Unite karti ---
+  const panel = document.getElementById("unit-panel");
+  const backdrop = document.getElementById("unit-backdrop");
+
+  function openUnit(cell) {
+    activeCell = cell;
+    activeUnit = JSON.parse(cell.dataset.unit);
+    document.getElementById("unit-title").textContent = `${activeUnit.inventory_id} — Kapi ${activeUnit.door_number}`;
+    document.getElementById("unit-subtitle").textContent = `${activeUnit.block_id} Blok · ${activeUnit.floor}. kat · ${activeUnit.flat_label}`;
+    document.getElementById("unit-status").textContent = TR_STATUS[activeUnit.status] || activeUnit.status;
+    document.getElementById("unit-price").textContent = activeUnit.list_price_try
+      ? new Intl.NumberFormat("tr-TR").format(activeUnit.list_price_try) + " TL"
+      : "—";
+    document.getElementById("unit-direction").textContent = activeUnit.direction || "—";
+    document.getElementById("unit-sun").textContent = activeUnit.sun_exposure || "—";
+    document.getElementById("unit-edit-link").href = `/admin/listings/${activeUnit.inventory_id}/edit`;
+    document.getElementById("unit-offer-link").href = `/admin/offers/new?inventory_id=${activeUnit.inventory_id}`;
+    document.getElementById("unit-feedback").textContent = "";
+
+    const info = document.getElementById("unit-reservation-info");
+    const forms = document.getElementById("unit-reservation-forms");
+    const reservation = activeUnit.reservation;
+    if (reservation) {
+      info.hidden = false;
+      forms.hidden = true;
+      document.getElementById("reservation-kind").textContent =
+        reservation.kind === "option" ? `OPSIYON — kalan ${reservation.remaining_label || "?"}` : "KAPORA";
+      const parts = [];
+      if (reservation.user_id) parts.push(reservation.user_id);
+      if (reservation.amount_try) parts.push(new Intl.NumberFormat("tr-TR").format(reservation.amount_try) + " TL");
+      if (reservation.expires_at) parts.push("bitis: " + reservation.expires_at);
+      if (reservation.note) parts.push(reservation.note);
+      document.getElementById("reservation-detail").textContent = parts.join(" · ") || "—";
+      document.getElementById("btn-convert-deposit").hidden = reservation.kind !== "option";
+    } else {
+      info.hidden = true;
+      forms.hidden = activeUnit.status !== "available";
+    }
+
+    panel.classList.add("open");
+    backdrop.classList.add("open");
+  }
+
+  async function reservationAction(path, body) {
+    const feedback = document.getElementById("unit-feedback");
+    feedback.textContent = "Kaydediliyor...";
+    try {
+      const response = await fetch(`/admin/stock/${activeUnit.inventory_id}/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        feedback.textContent = payload.error || "Islem basarisiz.";
+        return;
+      }
+      location.reload();
+    } catch (error) {
+      feedback.textContent = "Sunucuya ulasilamadi: " + error.message;
+    }
+  }
+
+  document.getElementById("btn-place-option").addEventListener("click", () => {
+    reservationAction("option", {
+      user_id: document.getElementById("res-user").value.trim(),
+      hours: parseInt(document.getElementById("res-hours").value, 10),
+    });
+  });
+
+  document.getElementById("btn-place-deposit").addEventListener("click", () => {
+    reservationAction("deposit", {
+      user_id: document.getElementById("res-user").value.trim(),
+      amount_try: document.getElementById("res-amount").value.replace(/\D/g, ""),
+    });
+  });
+
+  document.getElementById("btn-convert-deposit").addEventListener("click", () => {
+    const amount = prompt("Kapora tutari (TL):", "");
+    if (amount === null) return;
+    reservationAction("deposit", {
+      user_id: (activeUnit.reservation && activeUnit.reservation.user_id) || "",
+      amount_try: amount.replace(/\D/g, ""),
+    });
+  });
+
+  document.getElementById("btn-release").addEventListener("click", () => {
+    if (!confirm("Rezervasyon iptal edilip daire satisa alinacak. Emin misiniz?")) return;
+    reservationAction("release", {});
+  });
+
+  document.getElementById("btn-mark-sold").addEventListener("click", () => {
+    if (!confirm("Daire SATILDI olarak isaretlenecek. Emin misiniz?")) return;
+    reservationAction("status", { status: "sold" });
+  });
+
+  function closeUnit() {
+    panel.classList.remove("open");
+    backdrop.classList.remove("open");
+    activeUnit = null;
+    activeCell = null;
+  }
+
+  document.querySelectorAll(".unit-cell").forEach((cell) => {
+    cell.addEventListener("click", () => openUnit(cell));
+  });
+  document.getElementById("unit-close").addEventListener("click", closeUnit);
+  backdrop.addEventListener("click", closeUnit);
+
+  // --- Durum degistirme ---
+  document.querySelectorAll(".status-btn").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!activeUnit) return;
+      const newStatus = button.dataset.status;
+      const feedback = document.getElementById("unit-feedback");
+      feedback.textContent = "Kaydediliyor...";
+      try {
+        const response = await fetch(`/admin/stock/${activeUnit.inventory_id}/status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          feedback.textContent = payload.error || "Kaydedilemedi.";
+          return;
+        }
+        activeUnit.status = newStatus;
+        activeCell.dataset.status = newStatus;
+        activeCell.dataset.unit = JSON.stringify(activeUnit);
+        activeCell.classList.remove("available", "reserved", "sold");
+        activeCell.classList.add(newStatus);
+        document.getElementById("unit-status").textContent = TR_STATUS[newStatus];
+        feedback.textContent = "Durum guncellendi. Agent bir sonraki mesajda yeni durumu gorur.";
+        applyFilters();
+      } catch (error) {
+        feedback.textContent = "Sunucuya ulasilamadi: " + error.message;
+      }
+    });
+  });
+</script>
+{% endblock %}

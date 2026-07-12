@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Test Sohbeti — {{ panel_project }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Test Sohbeti</h1>
+  <p>Yapay zeka asistanini WhatsApp'a gerek kalmadan buradan test edin.</p>
+</div>
+
+<div class="chat-panel">
+  <div class="chat-toolbar">
+    <span class="muted-line">Kanal: panel &middot; Kullanici: panel-test &middot; Konusma "Konusmalar" sayfasina da kaydedilir.</span>
+    <button type="button" class="button secondary" id="chat-reset">Sohbeti Sifirla</button>
+  </div>
+
+  <div class="chat-messages" id="chat-messages">
+    {% for turn in history %}
+      <div class="chat-bubble {{ 'user' if turn.role == 'user' else 'agent' }}">{{ turn.text }}</div>
+    {% else %}
+      <div class="chat-empty" id="chat-empty">Henuz mesaj yok. Asagidan yazarak baslayin, ornegin: "merhaba" ya da "3+1 daire var mi?"</div>
+    {% endfor %}
+  </div>
+
+  <form class="chat-form" id="chat-form" autocomplete="off">
+    <input type="text" id="chat-input" placeholder="Mesajinizi yazin..." maxlength="1000" required>
+    <button type="submit" class="button" id="chat-send">Gonder</button>
+  </form>
+</div>
+
+<script>
+  const messagesEl = document.getElementById("chat-messages");
+  const form = document.getElementById("chat-form");
+  const input = document.getElementById("chat-input");
+  const sendBtn = document.getElementById("chat-send");
+  const resetBtn = document.getElementById("chat-reset");
+
+  function clearEmptyState() {
+    const empty = document.getElementById("chat-empty");
+    if (empty) empty.remove();
+  }
+
+  function addBubble(text, who, routerDecision) {
+    clearEmptyState();
+    const bubble = document.createElement("div");
+    bubble.className = "chat-bubble " + who;
+    bubble.textContent = text;
+
+    if (routerDecision) {
+      const details = document.createElement("details");
+      details.className = "chat-meta";
+      const summary = document.createElement("summary");
+      summary.textContent = "arac: " + (routerDecision.tool || "?");
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(routerDecision, null, 2);
+      details.appendChild(summary);
+      details.appendChild(pre);
+      bubble.appendChild(details);
+    }
+
+    messagesEl.appendChild(bubble);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return bubble;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = input.value.trim();
+    if (!message) return;
+
+    input.value = "";
+    addBubble(message, "user");
+    const pending = addBubble("Yanit hazirlaniyor...", "agent pending");
+    sendBtn.disabled = true;
+
+    try {
+      const response = await fetch("{{ url_for('chat_message') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      const payload = await response.json();
+      pending.remove();
+      if (!response.ok) {
+        addBubble(payload.error || "Bir hata olustu.", "agent error");
+      } else {
+        addBubble(payload.reply, "agent", payload.router_decision);
+      }
+    } catch (error) {
+      pending.remove();
+      addBubble("Sunucuya ulasilamadi: " + error.message, "agent error");
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  });
+
+  resetBtn.addEventListener("click", async () => {
+    if (!confirm("Sohbet sifirlansin mi? Hafiza bastan baslar.")) return;
+    try {
+      await fetch("{{ url_for('chat_reset') }}", { method: "POST" });
+      messagesEl.innerHTML = "";
+      addBubble("Sohbet sifirlandi. Yeni bir konusma basladi.", "agent pending");
+    } catch (error) {
+      addBubble("Sifirlama basarisiz: " + error.message, "agent error");
+    }
+    input.focus();
+  });
+
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  input.focus();
+</script>
+{% endblock %}

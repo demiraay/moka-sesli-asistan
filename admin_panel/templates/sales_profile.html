@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Satis Profili{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Satis Profili</h1>
+    <p>Handoff mesajlarinda ve WhatsApp yonlendirmelerinde kullanilacak ofis ve danisman bilgilerini yonetin.</p>
+  </div>
+
+  <form class="edit-form" method="post">
+    <label>
+      Danisman adi
+      <input type="text" name="consultant_name" value="{{ sales_profile.consultant_name }}">
+    </label>
+    <label>
+      Danisman unvani
+      <input type="text" name="consultant_title" value="{{ sales_profile.consultant_title }}" placeholder="Satis danismani">
+    </label>
+    <label>
+      Telefon numarasi
+      <input type="text" name="phone_number" value="{{ sales_profile.phone_number }}">
+    </label>
+    <label>
+      WhatsApp numarasi
+      <input type="text" name="whatsapp_number" value="{{ sales_profile.whatsapp_number }}">
+    </label>
+    <label>
+      Ofis adi
+      <input type="text" name="office_name" value="{{ sales_profile.office_name }}">
+    </label>
+    <label>
+      Konum etiketi
+      <input type="text" name="location_label" value="{{ sales_profile.location_label }}" placeholder="Ekinciler Residence Satis Ofisi">
+    </label>
+    <label>
+      Enlem
+      <input type="text" name="latitude" value="{{ sales_profile.latitude }}">
+    </label>
+    <label>
+      Boylam
+      <input type="text" name="longitude" value="{{ sales_profile.longitude }}">
+    </label>
+    <label>
+      Harita linki
+      <input type="text" name="maps_url" value="{{ sales_profile.maps_url }}" placeholder="https://maps.google.com/...">
+    </label>
+    <label>
+      Ofis adresi
+      <textarea name="office_address" rows="4">{{ sales_profile.office_address }}</textarea>
+    </label>
+    <label class="checkbox-row">
+      <input type="checkbox" name="auto_share_whatsapp_location" {% if sales_profile.auto_share_whatsapp_location %}checked{% endif %}>
+      WhatsApp handoff durumunda konum bilgisi otomatik paylasilsin
+    </label>
+    <div class="form-actions">
+      <button class="button" type="submit">Kaydet</button>
+      <a class="button secondary" href="{{ url_for('dashboard') }}">Panele don</a>
+    </div>
+  </form>
+{% endblock %}

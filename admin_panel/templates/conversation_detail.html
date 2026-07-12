@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Konusma Detayi{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Konusma Detayi</h1>
+    <p>Oturum: {{ session.session_id }}</p>
+    <div class="channel-pills">
+      <span class="channel-pill {{ session.channel }}">{{ 'WhatsApp' if session.channel == 'whatsapp' else 'Demo' if session.channel == 'default' else session.channel }}</span>
+    </div>
+  </div>
+
+  <section class="notes-card">
+    <div class="notes-header">
+      <div>
+        <h2>Yapay Zeka Notlari</h2>
+        <p>Kullanici: {{ session.user_id }}</p>
+      </div>
+      <small>{{ ai_notes.updated_at or "Henuz guncellenmedi" }}</small>
+    </div>
+    <p class="notes-summary">{{ ai_notes.ai_summary or "Henüz kayda değer yapay zeka notu yok." }}</p>
+  </section>
+
+  <div class="timeline">
+    {% for turn in turns %}
+      <article class="turn-card">
+        <div class="turn-meta">
+          <strong>Kullanici</strong>
+          <span>{{ turn.created_at }}</span>
+        </div>
+        <div class="channel-pills">
+          <span class="channel-pill {{ turn.channel }}">{{ 'WhatsApp' if turn.channel == 'whatsapp' else 'Demo' if turn.channel == 'default' else turn.channel }}</span>
+        </div>
+        <p>{{ turn.user_input }}</p>
+
+        <div class="turn-meta">
+          <strong>Agent</strong>
+        </div>
+        <p>{{ turn.agent_response }}</p>
+
+        <details>
+          <summary>Router karari</summary>
+          <pre>{{ turn.router_decision | tojson(indent=2) }}</pre>
+        </details>
+
+        <details>
+          <summary>Context</summary>
+          <pre>{{ turn.context | tojson(indent=2) }}</pre>
+        </details>
+      </article>
+    {% endfor %}
+  </div>
+{% endblock %}

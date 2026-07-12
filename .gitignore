@@ -1,0 +1,15 @@
+.env
+voice_output/
+__pycache__/
+*.pyc
+
+# Calisma zamani verisi — gercek konusmalar ve telefon numaralari icerir, push etme!
+data/admin.sqlite3
+
+# Node / WhatsApp Web istemcisi
+node_modules/
+whatsapp_mesaj_bot/.wwebjs_auth/
+whatsapp_mesaj_bot/.wwebjs_cache/
+
+# Panel foto yuklemeleri (runtime verisi)
+data/uploads/

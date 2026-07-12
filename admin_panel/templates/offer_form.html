@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Teklif Olustur — {{ panel_project }}{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Teklif Olustur</h1>
+    <p>{{ listing.inventory_id }} · {{ listing.block_id }} blok · {{ listing.floor }}. kat · Kapi {{ listing.door_number }} · {{ listing.flat_label }} —
+      liste fiyati <strong>{{ '{:,.0f}'.format(listing.list_price_try).replace(',', '.') }} TL</strong></p>
+  </div>
+
+  {% if error %}
+    <div class="flash-stack"><div class="flash error">{{ error }}</div></div>
+  {% endif %}
+
+  <form method="post" class="edit-form" action="{{ url_for('new_offer') }}">
+    <input type="hidden" name="inventory_id" value="{{ listing.inventory_id }}">
+    <label>Musteri (tel / isim, opsiyonel)
+      <input type="text" name="user_id" value="{{ user_id }}" placeholder="+905xx... ya da isim">
+    </label>
+    <label>Pesinat (%)
+      <input type="number" name="down_payment_pct" min="0" max="100" step="1" value="{{ params.down_payment_pct | int }}">
+    </label>
+    <label>Vade (ay)
+      <input type="number" name="months" min="1" max="240" step="1" value="{{ params.months }}">
+    </label>
+    <label>Ara odeme adedi
+      <input type="number" name="balloon_count" min="0" max="10" step="1" value="{{ params.balloon_count }}">
+    </label>
+    <label>Ara odeme tutari (TL)
+      <input type="number" name="balloon_amount" min="0" step="1000" value="{{ params.balloon_amount }}">
+    </label>
+    <label>Vade farki (yillik %)
+      <input type="number" name="annual_rate_pct" min="0" max="200" step="0.5" value="{{ params.annual_rate_pct }}">
+    </label>
+    <div class="form-actions">
+      <button type="submit" name="action" value="preview" class="button secondary">Hesapla / Onizle</button>
+      {% if plan %}
+        <button type="submit" name="action" value="save" class="button">Teklifi Kaydet ve Yazdir</button>
+      {% endif %}
+      <a class="button secondary" href="{{ url_for('stock_board') }}">Stok panosuna don</a>
+    </div>
+  </form>
+
+  {% if plan %}
+    <section class="notes-card" style="margin-top: 18px;">
+      <div class="notes-header">
+        <div>
+          <h2>Plan Ozeti</h2>
+          <p>Kaydetmeden once kontrol edin; kaydedilen teklif musteri gecmisine islenir.</p>
+        </div>
+      </div>
+      <div class="notes-grid">
+        <article class="note-chip"><span>Pesinat</span><strong>{{ '{:,.0f}'.format(plan.down_payment).replace(',', '.') }} TL</strong></article>
+        <article class="note-chip"><span>Aylik taksit</span><strong>{{ '{:,.0f}'.format(plan.monthly).replace(',', '.') }} TL × {{ plan.inputs.months }}</strong></article>
+        {% if plan.balloon_total %}
+          <article class="note-chip"><span>Ara odemeler</span><strong>{{ plan.inputs.balloon_count }} × {{ '{:,.0f}'.format(plan.inputs.balloon_amount).replace(',', '.') }} TL</strong></article>
+        {% endif %}
+        {% if plan.interest %}
+          <article class="note-chip"><span>Vade farki</span><strong>{{ '{:,.0f}'.format(plan.interest).replace(',', '.') }} TL</strong></article>
+        {% endif %}
+        <article class="note-chip"><span>Genel toplam</span><strong>{{ '{:,.0f}'.format(plan.total).replace(',', '.') }} TL</strong></article>
+      </div>
+      <div class="table-wrap" style="margin-top: 14px;">
+        <table>
+          <thead><tr><th>Odeme</th><th>Donem</th><th style="text-align:right">Tutar</th></tr></thead>
+          <tbody>
+            {% for row in plan.schedule %}
+              <tr>
+                <td>{{ row.label }}</td>
+                <td>{{ row.month_label }}</td>
+                <td style="text-align:right">{{ '{:,.0f}'.format(row.amount).replace(',', '.') }} TL</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,21 @@
+[
+    {
+        "project_id": "PRJ-001",
+        "name": "Ekinciler Residence",
+        "city": "İstanbul",
+        "district": "Ümraniye",
+        "neighborhood": "Finanskent",
+        "status": "under_construction",
+        "delivery_date": "2026-06-30",
+        "description": "Finans merkezinin kalbinde, lüks ve konforun buluşma noktası.",
+        "total_land_m2": 15000,
+        "green_area_m2": 10000,
+        "social_facilities": [
+            "Indoor Pool",
+            "Gym",
+            "Sauna",
+            "Kids Playground",
+            "Parking Garage"
+        ]
+    }
+]

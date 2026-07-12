@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Kullanici Konusmalari{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>{{ group.user_id }}</h1>
+    <p>Bu kullanicinin tum oturumlari toplu halde listeleniyor.</p>
+  </div>
+
+  <div class="section-toolbar">
+    <a class="button secondary" href="{{ url_for('conversations') }}">Tum kullanicilara don</a>
+    <div class="meta-pill">{{ group.conversation_count }} oturum / {{ group.turn_count }} tur</div>
+  </div>
+
+  <div class="channel-tabs">
+    <a class="channel-tab {% if not filters.channel or filters.channel == 'all' %}active{% endif %}" href="{{ url_for('user_conversations', user_id=group.user_id, q=filters.query, date_from=filters.date_from, date_to=filters.date_to, handoff_only='1' if filters.handoff_only else '', price_only='1' if filters.price_only else '', flat_type=filters.flat_type, channel='all') }}">Tumu</a>
+    <a class="channel-tab {% if filters.channel == 'whatsapp' %}active{% endif %}" href="{{ url_for('user_conversations', user_id=group.user_id, q=filters.query, date_from=filters.date_from, date_to=filters.date_to, handoff_only='1' if filters.handoff_only else '', price_only='1' if filters.price_only else '', flat_type=filters.flat_type, channel='whatsapp') }}">WhatsApp</a>
+    <a class="channel-tab {% if filters.channel == 'default' %}active{% endif %}" href="{{ url_for('user_conversations', user_id=group.user_id, q=filters.query, date_from=filters.date_from, date_to=filters.date_to, handoff_only='1' if filters.handoff_only else '', price_only='1' if filters.price_only else '', flat_type=filters.flat_type, channel='default') }}">Demo</a>
+  </div>
+
+  {% set STAGE_LABELS = {
+    "new": "Yeni",
+    "qualified": "Nitelikli",
+    "appointment": "Randevu",
+    "visited": "Gosterim",
+    "reserved": "Opsiyon/Kapora",
+    "won": "Satis",
+    "lost": "Kayip"
+  } %}
+  <section class="notes-card takeover-card">
+    <div class="notes-header">
+      <div>
+        <h2>Canli Devralma
+          {% if ai_notes.ai_paused %}
+            <span class="status-pill draft">AI DURAKLATILDI</span>
+          {% else %}
+            <span class="status-pill active">AI AKTIF</span>
+          {% endif %}
+        </h2>
+        <p>{{ "Konusmayi siz yurutuyorsunuz; musteri mesajlari cevapsiz loglanir." if ai_notes.ai_paused else "AI musteriyle konusuyor; devralmak icin duraklat." }}</p>
+      </div>
+      <form method="post" action="{{ url_for('toggle_ai_pause', user_id=group.user_id) }}">
+        <input type="hidden" name="paused" value="{{ '0' if ai_notes.ai_paused else '1' }}">
+        <button type="submit" class="button {{ 'secondary' if not ai_notes.ai_paused }}">
+          {{ "AI'a geri ver" if ai_notes.ai_paused else "Devral (AI'i duraklat)" }}
+        </button>
+      </form>
+    </div>
+
+    {% if live_turns %}
+      <div class="live-thread">
+        {% for turn in live_turns %}
+          {% if turn.user_input %}
+            <div class="live-bubble customer"><span>{{ turn.user_input }}</span></div>
+          {% endif %}
+          {% if turn.agent_response %}
+            <div class="live-bubble agent {{ 'human' if turn.router_decision.get('tool') == 'human_message' }}">
+              <span>{{ turn.agent_response }}</span>
+              <small>{{ 'siz' if turn.router_decision.get('tool') == 'human_message' else 'AI' }}</small>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('send_message_to_user', user_id=group.user_id) }}" class="takeover-form">
+      <input type="text" name="message" placeholder="Musteriye WhatsApp'tan insan olarak yazin..." required maxlength="1000">
+      <button type="submit" class="button">Gonder</button>
+    </form>
+    <p class="chart-note">Mesajlar kuyruga yazilir; calisan WhatsApp botu birkac saniye icinde iletir ve gecmise "siz" etiketiyle islenir.</p>
+  </section>
+
+  <section class="notes-card">
+    <div class="notes-header">
+      <div>
+        <h2>Lead Durumu</h2>
+        <p>Satis surecindeki asama; degisiklikler gecmise islenir.</p>
+      </div>
+      <form class="stage-form" method="post" action="{{ url_for('update_lead_stage', user_id=group.user_id) }}">
+        <select name="stage">
+          {% for stage in stages %}
+            <option value="{{ stage }}" {{ 'selected' if ai_notes.stage == stage }}>{{ STAGE_LABELS[stage] }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="button compact">Kaydet</button>
+      </form>
+    </div>
+    {% if lead_events %}
+      <div class="stage-history">
+        {% for event in lead_events[:8] %}
+          <span class="stage-history-item">
+            {% if event.event_type == 'stage_change' %}
+              {{ STAGE_LABELS.get(event.payload.get('from'), event.payload.get('from')) }} →
+              <strong>{{ STAGE_LABELS.get(event.payload.get('to'), event.payload.get('to')) }}</strong>
+            {% elif event.event_type == 'offer_created' %}
+              📄 <strong><a href="{{ url_for('offer_detail', offer_id=event.payload.get('offer_id')) }}">Teklif #{{ event.payload.get('offer_id') }}</a></strong> ({{ event.payload.get('inventory_id') }})
+            {% elif event.event_type == 'option_placed' %}
+              ⏳ <strong>Opsiyon</strong> ({{ event.payload.get('inventory_id') }}, {{ event.payload.get('hours') }}s)
+            {% elif event.event_type == 'option_expired' %}
+              ⌛ <strong>Opsiyon süresi doldu</strong> ({{ event.payload.get('inventory_id') }})
+            {% elif event.event_type == 'deposit_placed' %}
+              💰 <strong>Kapora</strong> ({{ event.payload.get('inventory_id') }})
+            {% elif event.event_type == 'reservation_released' %}
+              ↩︎ <strong>Rezervasyon iptal</strong> ({{ event.payload.get('inventory_id') }})
+            {% elif event.event_type == 'handoff_claimed' %}
+              ✅ <strong>Devralındı</strong>
+            {% else %}
+              {{ event.event_type }}
+            {% endif %}
+            <small>{{ event.created_at[:16].replace('T', ' ') }}</small>
+          </span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty-inline">Henuz asama degisikligi yapilmadi.</p>
+    {% endif %}
+  </section>
+
+  <section class="notes-card">
+    <div class="notes-header">
+      <div>
+        <h2>Talep Karti &amp; Eslesen Daireler</h2>
+        <p>AI'in konusmadan cikardigi kriterlere uyan, satistaki en iyi daireler.</p>
+      </div>
+    </div>
+    {% set criteria = [] %}
+    {% if ai_notes.ai_notes.preferred_flat_type %}{% set _ = criteria.append('Tip: ' ~ ai_notes.ai_notes.preferred_flat_type) %}{% endif %}
+    {% if ai_notes.ai_notes.budget_max_try %}{% set _ = criteria.append('Butce: ≤ ' ~ '{:,.0f}'.format(ai_notes.ai_notes.budget_max_try).replace(',', '.') ~ ' TL') %}{% endif %}
+    {% if ai_notes.ai_notes.preferred_block %}{% set _ = criteria.append('Blok: ' ~ ai_notes.ai_notes.preferred_block) %}{% endif %}
+    {% if ai_notes.ai_notes.preferred_floor is not none %}{% set _ = criteria.append('Kat: ' ~ ai_notes.ai_notes.preferred_floor) %}{% endif %}
+    {% if ai_notes.ai_notes.preferred_direction %}{% set _ = criteria.append('Cephe: ' ~ ai_notes.ai_notes.preferred_direction) %}{% endif %}
+    {% if ai_notes.ai_notes.sun_preference %}{% set _ = criteria.append('Gunes: ' ~ ai_notes.ai_notes.sun_preference) %}{% endif %}
+    {% if criteria %}
+      <div class="stage-history">
+        {% for item in criteria %}<span class="stage-history-item">{{ item }}</span>{% endfor %}
+      </div>
+    {% else %}
+      <p class="empty-inline">Henuz yapilandirilmis tercih cikarilmadi.</p>
+    {% endif %}
+
+    {% if unit_matches %}
+      <div class="match-list">
+        {% for match in unit_matches %}
+          <div class="match-row">
+            <span class="match-score">{{ match.score }} puan</span>
+            <div class="match-main">
+              <strong>{{ match.inventory_id }}</strong>
+              <small>{{ match.block_id }} blok · {{ match.floor }}. kat · Kapi {{ match.door_number }} · {{ match.flat_label }} · {{ match.direction }}</small>
+              <small class="match-reasons">{{ match.reasons | join(' · ') }}</small>
+            </div>
+            <span class="match-price">{{ match.price_short }}</span>
+            <a class="button secondary compact" href="{{ url_for('edit_listing', inventory_id=match.inventory_id) }}">Ilan</a>
+          </div>
+        {% endfor %}
+      </div>
+    {% elif criteria %}
+      <p class="empty-inline">Kriterlere uyan satista daire bulunamadi.</p>
+    {% endif %}
+  </section>
+
+  <section class="notes-card">
+    <div class="notes-header">
+      <div>
+        <h2>Yapay Zeka Notlari</h2>
+        <p>Kullanici hakkinda cikarilan onemli bilgiler burada tutulur.</p>
+      </div>
+      <small>{{ ai_notes.updated_at or "Henuz guncellenmedi" }}</small>
+    </div>
+
+    <p class="notes-summary">{{ ai_notes.ai_summary or "Henüz kayda değer yapay zeka notu yok." }}</p>
+
+    <div class="notes-grid">
+      {% for key, value in ai_notes.ai_notes.items() %}
+        <div class="note-chip">
+          <span>{{ key }}</span>
+          <strong>{{ value }}</strong>
+        </div>
+      {% else %}
+        <div class="empty-inline">Henüz otomatik not üretilmedi.</div>
+      {% endfor %}
+    </div>
+
+    <form class="manual-notes-form" method="post" action="{{ url_for('update_user_notes', user_id=group.user_id) }}">
+      <label>Manuel Not
+        <textarea name="manual_notes" rows="4" placeholder="Bu kullanici hakkinda ekip ici not ekleyin">{{ ai_notes.manual_notes }}</textarea>
+      </label>
+      <button type="submit">Notu Kaydet</button>
+    </form>
+  </section>
+
+  <form class="filters-panel" method="get">
+    <input type="hidden" name="channel" value="{{ filters.channel }}">
+    <div class="filters-grid">
+      <input type="text" name="q" value="{{ filters.query }}" placeholder="Bu kullanicinin konusmalarinda kelime ara">
+      <input type="date" name="date_from" value="{{ filters.date_from }}">
+      <input type="date" name="date_to" value="{{ filters.date_to }}">
+      <input type="text" name="flat_type" value="{{ filters.flat_type }}" placeholder="Daire tipi: 2+1, 3+1, FT-2P1">
+    </div>
+    <div class="filters-row">
+      <label><input type="checkbox" name="handoff_only" value="1" {% if filters.handoff_only %}checked{% endif %}> Sadece handoff olanlar</label>
+      <label><input type="checkbox" name="price_only" value="1" {% if filters.price_only %}checked{% endif %}> Sadece fiyat konusmalari</label>
+    </div>
+    <div class="filters-actions">
+      <button type="submit">Filtrele</button>
+      <a class="button secondary" href="{{ url_for('user_conversations', user_id=group.user_id) }}">Temizle</a>
+    </div>
+  </form>
+
+  <div class="conversation-list">
+    {% for item in group.conversations %}
+      <a class="conversation-card" href="{{ url_for('conversation_detail', session_id=item.session_id) }}">
+        <div class="conversation-card-header">
+          <strong>Oturum {{ loop.index }}</strong>
+          <div class="conversation-card-meta">
+            <span class="channel-pill {{ item.channel }}">{{ 'WhatsApp' if item.channel == 'whatsapp' else 'Demo' if item.channel == 'default' else item.channel }}</span>
+            <span>{{ item.turn_count }} tur</span>
+          </div>
+        </div>
+        <p>{{ item.last_user_input or "Kayit yok" }}</p>
+        <small>{{ item.last_message_at }}</small>
+      </a>
+    {% else %}
+      <div class="empty-state">Bu kullanici icin aramaniza uygun oturum bulunamadi.</div>
+    {% endfor %}
+  </div>
+{% endblock %}

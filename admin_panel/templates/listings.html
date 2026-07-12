@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Ilanlar — {{ panel_project }}{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Ilanlar</h1>
+    <p>Tum daireleri goruntuleyin ve duzenleyin.</p>
+  </div>
+
+  <form class="search-bar listing-filters" method="get">
+    <input type="text" name="q" value="{{ query }}" placeholder="INV-0001, A blok, 2+1...">
+    <select name="block">
+      <option value="">Blok: Tumu</option>
+      {% for block in block_options %}
+        <option value="{{ block.block_id }}" {% if filters.block_id == block.block_id %}selected{% endif %}>{{ block.block_id }} Blok</option>
+      {% endfor %}
+    </select>
+    <select name="flat_type">
+      <option value="">Tip: Tumu</option>
+      {% for option in flat_options %}
+        <option value="{{ option.flat_type_id }}" {% if filters.flat_type_id == option.flat_type_id %}selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+    <select name="status">
+      <option value="">Durum: Tumu</option>
+      {% for value in ["available", "reserved", "sold"] %}
+        <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ value | status_tr }}</option>
+      {% endfor %}
+    </select>
+    <input class="price-input" type="text" name="price_min" inputmode="numeric"
+           value="{{ filters.price_min or '' }}" placeholder="Min fiyat">
+    <input class="price-input" type="text" name="price_max" inputmode="numeric"
+           value="{{ filters.price_max or '' }}" placeholder="Max fiyat">
+    {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+    <button type="submit">Uygula</button>
+    <a class="button secondary" href="{{ url_for('listings') }}">Temizle</a>
+  </form>
+
+  <div class="list-toolbar">
+    <p class="result-count">{{ total_count }} daire{% if total_pages > 1 %} · sayfa {{ page }}/{{ total_pages }}{% endif %}</p>
+    <div class="toolbar-actions">
+      <a class="view-toggle{{ ' on' if view != 'cards' }}" href="{{ url_for('listings', **dict(filter_args, view='table')) }}">Tablo</a>
+      <a class="view-toggle{{ ' on' if view == 'cards' }}" href="{{ url_for('listings', **dict(filter_args, view='cards')) }}">Kartlar</a>
+      <a class="button secondary compact-link" href="{{ url_for('export_listings_csv', **filter_args) }}">CSV indir</a>
+    </div>
+  </div>
+
+  {% macro sort_link(field, label) %}
+    {% set next = field + '_desc' if sort == field + '_asc' else field + '_asc' %}
+    <a class="th-sort" href="{{ url_for('listings', **dict(filter_args, sort=next)) }}">{{ label }}{% if sort == field + '_asc' %} ▲{% elif sort == field + '_desc' %} ▼{% endif %}</a>
+  {% endmacro %}
+
+  {% if view == 'cards' %}
+  <div class="card-grid">
+    {% for listing in listings %}
+      {% set res = reservations.get(listing.inventory_id) %}
+      {% set cover = cover_map.unit.get(listing.inventory_id) or cover_map.flat_type.get(listing.flat_type_id) %}
+      {% set change = price_changes.get(listing.inventory_id) %}
+      <a class="listing-card" href="{{ url_for('listing_detail', inventory_id=listing.inventory_id) }}">
+        <div class="card-media">
+          {% if cover %}
+            <img src="{{ url_for('listing_media', relpath=cover) }}" alt="" loading="lazy">
+          {% else %}
+            <span class="card-media-placeholder ft-{{ listing.flat_type_id | lower | replace('-', '') }}">{{ listing.flat_label }}</span>
+          {% endif %}
+          <span class="status-badge st-{{ listing.status }} card-status">{{ listing.status | status_tr }}</span>
+        </div>
+        <div class="card-body">
+          <div class="card-title">
+            <strong>{{ listing.block_id }}-{{ listing.door_number }}</strong>
+            <span class="cell-sub">{{ listing.flat_label }}{% if listing.flat.net_m2 %} · {{ listing.flat.net_m2 }} m²{% endif %}</span>
+          </div>
+          <div class="card-price">
+            {{ listing.list_price_try | tl }}
+            {% if change and change.direction != 'same' %}
+              <span class="price-dir {{ change.direction }}">{{ '▼' if change.direction == 'down' else '▲' }}</span>
+            {% endif %}
+          </div>
+          <div class="cell-sub">{{ listing.floor }}. kat · {{ listing.direction | direction_tr }}
+            {% if res %} · {{ 'OPS' if res.kind == 'option' else 'KAPORA' }}{% endif %}</div>
+        </div>
+      </a>
+    {% else %}
+      <p>Sonuc bulunamadi.</p>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="listings-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Daire</th>
+          <th>Tip</th>
+          <th>{{ sort_link('price', 'Fiyat') }}</th>
+          <th>Durum</th>
+          <th>{{ sort_link('floor', 'Konum') }}</th>
+          <th>Gunes</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for listing in listings %}
+          {% set res = reservations.get(listing.inventory_id) %}
+          {% set cover = cover_map.unit.get(listing.inventory_id) or cover_map.flat_type.get(listing.flat_type_id) %}
+          <tr>
+            <td class="thumb-cell">
+              <a href="{{ url_for('listing_detail', inventory_id=listing.inventory_id) }}">
+                {% if cover %}
+                  <img class="row-thumb" src="{{ url_for('listing_media', relpath=cover) }}" alt="" loading="lazy">
+                {% else %}
+                  <span class="row-thumb placeholder ft-{{ listing.flat_type_id | lower | replace('-', '') }}">{{ listing.flat_label }}</span>
+                {% endif %}
+              </a>
+            </td>
+            <td>
+              <a class="unit-link" href="{{ url_for('listing_detail', inventory_id=listing.inventory_id) }}">
+                <strong class="unit-name">{{ listing.block_id }}-{{ listing.door_number }}</strong>
+              </a><br>
+              <span class="cell-sub">{{ listing.inventory_id }}</span>
+            </td>
+            <td>
+              {{ listing.flat_label }}<br>
+              {% if listing.flat.net_m2 %}
+                <span class="cell-sub">{{ listing.flat.net_m2 }}/{{ listing.flat.gross_m2 }} m²</span>
+              {% endif %}
+            </td>
+            <td>
+              <strong>{{ listing.list_price_try | tl }}</strong>
+              {% set change = price_changes.get(listing.inventory_id) %}
+              {% if change and change.direction != 'same' %}
+                <span class="price-dir {{ change.direction }}" title="Fiyat {{ change.at_label }} tarihinde guncellendi">{{ '▼' if change.direction == 'down' else '▲' }}</span>
+              {% endif %}<br>
+              {% if listing.list_price_try and listing.flat.net_m2 %}
+                <span class="cell-sub">{{ ((listing.list_price_try / listing.flat.net_m2) | round | int) | tl }}/m²</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="status-badge st-{{ listing.status }}">{{ listing.status | status_tr }}</span>
+              {% if res %}
+                <span class="res-chip">{{ 'OPS' if res.kind == 'option' else 'KAPORA' }}{% if res.remaining_label %} {{ res.remaining_label }}{% endif %}</span>
+              {% endif %}
+            </td>
+            <td>{{ listing.floor }}. kat · {{ listing.direction | direction_tr }}</td>
+            <td>
+              {{ listing.sunlight.sun_exposure | sun_tr }}
+              {% if listing.sunlight.sun_hours_per_day %}
+                <span class="cell-sub">· {{ listing.sunlight.sun_hours_per_day }} sa</span>
+              {% endif %}
+            </td>
+            <td class="actions">
+              <a class="button secondary" href="{{ url_for('edit_listing', inventory_id=listing.inventory_id) }}">Duzenle</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="8">Sonuc bulunamadi.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if total_pages > 1 %}
+    <nav class="pagination">
+      {% if page > 1 %}
+        <a class="button secondary" href="{{ url_for('listings', **dict(filter_args, page=page - 1)) }}">&larr; Onceki</a>
+      {% endif %}
+      <span class="page-info">Sayfa {{ page }} / {{ total_pages }}</span>
+      {% if page < total_pages %}
+        <a class="button secondary" href="{{ url_for('listings', **dict(filter_args, page=page + 1)) }}">Sonraki &rarr;</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+{% endblock %}

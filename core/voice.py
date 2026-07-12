@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+import json
+import shutil
+import urllib.error
+import urllib.request
+import uuid
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+import whisper
+
+from core.config import Config
+
+if TYPE_CHECKING:
+    from core.orchestrator import AgentOrchestrator
+
+
+class WhisperTranscriber:
+    _loaded_models: dict[tuple[str, str], Any] = {}
+
+    def __init__(self, config: Optional[Config] = None):
+        self.config = config or Config()
+
+    def _require_ffmpeg(self) -> None:
+        if shutil.which("ffmpeg") is None:
+            raise RuntimeError(
+                "Local Whisper icin ffmpeg gerekiyor. Lutfen ffmpeg kurup tekrar deneyin."
+            )
+
+    def _get_model(self) -> Any:
+        model_name = self.config.whisper_model
+        device = self.config.whisper_device or "cpu"
+        cache_key = (model_name, device)
+        if cache_key not in self._loaded_models:
+            self._loaded_models[cache_key] = whisper.load_model(model_name, device=device)
+        return self._loaded_models[cache_key]
+
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+        audio_file = Path(audio_path)
+        if not audio_file.exists():
+            raise FileNotFoundError(f"Ses dosyasi bulunamadi: {audio_file}")
+
+        self._require_ffmpeg()
+        model = self._get_model()
+        target_language = language or self.config.whisper_language or None
+        result = model.transcribe(
+            str(audio_file),
+            language=target_language,
+            fp16=False,
+        )
+        return {
+            "text": str(result.get("text", "")).strip(),
+            "language": result.get("language") or target_language,
+            "segments": result.get("segments", []),
+            "source_audio_path": str(audio_file),
+        }
+
+
+class ElevenLabsSynthesizer:
+    def __init__(self, config: Optional[Config] = None):
+        self.config = config or Config()
+
+    def is_configured(self) -> bool:
+        return bool(self.config.elevenlabs_api_key and self.config.elevenlabs_voice_id)
+
+    def synthesize(
+        self,
+        text: str,
+        output_path: Optional[str] = None,
+        voice_id: Optional[str] = None,
+        model_id: Optional[str] = None,
+    ) -> str:
+        if not self.config.elevenlabs_api_key:
+            raise RuntimeError("ELEVENLABS_API_KEY .env icinde tanimli olmali.")
+        active_voice_id = voice_id or self.config.elevenlabs_voice_id
+        if not active_voice_id:
+            raise RuntimeError("ELEVENLABS_VOICE_ID .env icinde tanimli olmali.")
+
+        target_path = Path(output_path) if output_path else self._default_output_path()
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        url = (
+            f"{self.config.elevenlabs_base_url}/text-to-speech/{active_voice_id}"
+            f"?output_format={self.config.elevenlabs_output_format}"
+        )
+        payload = {
+            "text": text,
+            "model_id": model_id or self.config.elevenlabs_model_id,
+        }
+        data = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "audio/mpeg",
+                "xi-api-key": self.config.elevenlabs_api_key,
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                target_path.write_bytes(response.read())
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"ElevenLabs istegi basarisiz oldu: {detail}") from error
+        except urllib.error.URLError as error:
+            raise RuntimeError(f"ElevenLabs baglantisi kurulamadi: {error}") from error
+
+        return str(target_path)
+
+    def _default_output_path(self) -> Path:
+        return Path(self.config.voice_output_dir) / f"reply-{uuid.uuid4().hex}.mp3"
+
+
+class VoiceTurnProcessor:
+    def __init__(
+        self,
+        orchestrator: "AgentOrchestrator",
+        transcriber: Optional[WhisperTranscriber] = None,
+        synthesizer: Optional[ElevenLabsSynthesizer] = None,
+    ):
+        self.orchestrator = orchestrator
+        self.transcriber = transcriber or WhisperTranscriber(orchestrator.config)
+        self.synthesizer = synthesizer or ElevenLabsSynthesizer(orchestrator.config)
+
+    def process_audio_turn(
+        self,
+        audio_path: str,
+        user_id: str = "default_user",
+        channel: str = "voice",
+        output_audio_path: Optional[str] = None,
+        synthesize_reply: bool = True,
+    ) -> Dict[str, Any]:
+        transcription = self.transcriber.transcribe(audio_path)
+        transcript_text = transcription.get("text", "").strip()
+        if not transcript_text:
+            raise ValueError("Whisper ses dosyasindan okunabilir bir metin cikaramadi.")
+
+        turn_result = self.orchestrator.process_turn(
+            transcript_text,
+            user_id=user_id,
+            channel=channel,
+        )
+
+        audio_reply_path = None
+        if synthesize_reply:
+            audio_reply_path = self.synthesizer.synthesize(
+                turn_result["agent_response"],
+                output_path=output_audio_path,
+            )
+
+        return {
+            "transcription": transcription,
+            "user_input": transcript_text,
+            "agent_response": turn_result["agent_response"],
+            "router_decision": turn_result["router_decision"],
+            "context": turn_result["context"],
+            "reply_audio_path": audio_reply_path,
+        }
