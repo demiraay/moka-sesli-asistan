@@ -1,15 +1,14 @@
 {
-    "handoff_conditions": [
-        "request_visit",
-        "ask_for_callback",
-        "price_repeated_twice",
-        "high_intent_detected",
-        "asked_about_payment_plan",
-        "ready_to_buy"
-    ],
-    "required_info_for_handoff": [
-        "name",
-        "phone_number",
-        "interested_flat_type"
-    ]
+  "handoff_conditions": [
+    "angry_customer",
+    "fraud_or_security_concern",
+    "chargeback_dispute",
+    "legal_threat",
+    "account_closure_request",
+    "unresolved_after_troubleshooting",
+    "explicit_human_request"
+  ],
+  "required_info_for_handoff": [
+    "issue_summary"
+  ]
 }

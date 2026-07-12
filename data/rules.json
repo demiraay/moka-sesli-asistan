@@ -1,17 +1,22 @@
 {
-    "pricing_rules": {
-        "negotiation_allowed": false,
-        "custom_discount_allowed": false,
-        "agent_can_calculate_discount": false,
-        "price_is_list_price_only": true
-    },
-    "stock_rules": {
-        "must_check_inventory": true,
-        "no_guessing": true,
-        "reservation_duration_days": 3
-    },
-    "viewing_rules": {
-        "appointment_required": true,
-        "working_hours": "09:00 - 18:00"
-    }
+  "support_rules": {
+    "never_invent_amounts": true,
+    "always_ground_amounts_in_tool_data": true,
+    "no_fee_negotiation_by_ai": true,
+    "resolve_before_offer": true
+  },
+  "security_rules": {
+    "never_request_full_card_number": true,
+    "interrupt_if_customer_reads_card": true,
+    "mask_all_card_data": true
+  },
+  "payout_rules": {
+    "schedule": "T+1 iş günü",
+    "cutoff_local_time": "23:00",
+    "payout_time": "10:00"
+  },
+  "upsell_rules": {
+    "only_after_resolution": true,
+    "max_offers_per_call": 1
+  }
 }

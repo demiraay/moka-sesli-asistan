@@ -1,0 +1,20 @@
+[
+  {"terminal_id": "TRM-4451", "merchant_id": "M-1001", "model": "Moka P20", "status": "aktif", "firmware": "2.4.1", "last_seen_at": "D0T08:12:00", "note": null},
+  {"terminal_id": "TRM-3305", "merchant_id": "M-1002", "model": "Moka P20", "status": "aktif", "firmware": "2.4.1", "last_seen_at": "D0T13:04:00", "note": null},
+  {"terminal_id": "TRM-6118", "merchant_id": "M-1003", "model": "Moka Go", "status": "aktif", "firmware": "1.9.3", "last_seen_at": "D-1T20:30:00", "note": null},
+  {"terminal_id": "TRM-2211", "merchant_id": "M-1004", "model": "Moka P30 Pro", "status": "aktif", "firmware": "3.1.0", "last_seen_at": "D0T11:47:00", "note": null},
+  {"terminal_id": "TRM-7742", "merchant_id": "M-1005", "model": "Moka P20", "status": "aktif", "firmware": "2.4.1", "last_seen_at": "D0T09:58:00", "note": null},
+  {"terminal_id": "TRM-8830", "merchant_id": "M-1006", "model": "Moka P30 Pro", "status": "aktif", "firmware": "3.1.0", "last_seen_at": "D0T10:15:00", "note": null},
+  {"terminal_id": "TRM-5120", "merchant_id": "M-1007", "model": "Moka P20", "status": "aktif", "firmware": "2.2.0", "last_seen_at": "D-9T18:02:00", "note": "9 gündür bağlantı yok."},
+  {"terminal_id": "TRM-9917", "merchant_id": "M-1008", "model": "Moka Go", "status": "aktif", "firmware": "1.9.3", "last_seen_at": "D0T12:40:00", "note": null},
+  {"terminal_id": "TRM-4106", "merchant_id": "M-1009", "model": "Moka P20", "status": "pasif", "firmware": "2.1.4", "last_seen_at": "D-38T16:21:00", "note": "38 gündür kapalı."},
+  {"terminal_id": "TRM-3389", "merchant_id": "M-1010", "model": "Moka P20", "status": "aktif", "firmware": "2.4.1", "last_seen_at": "D0T07:33:00", "note": null},
+  {"terminal_id": "TRM-2764", "merchant_id": "M-1011", "model": "Moka Go", "status": "aktif", "firmware": "1.9.3", "last_seen_at": "D0T10:50:00", "note": null},
+  {"terminal_id": "TRM-5583", "merchant_id": "M-1012", "model": "Moka P20", "status": "aktif", "firmware": "2.2.0", "last_seen_at": "D-6T14:12:00", "note": "6 gündür bağlantı yok."},
+  {"terminal_id": "TRM-6647", "merchant_id": "M-1013", "model": "Moka Go", "status": "aktif", "firmware": "1.9.3", "last_seen_at": "D0T11:05:00", "note": null},
+  {"terminal_id": "TRM-7208", "merchant_id": "M-1014", "model": "Moka P20", "status": "aktif", "firmware": "2.4.1", "last_seen_at": "D0T09:22:00", "note": null},
+  {"terminal_id": "TRM-8451", "merchant_id": "M-1015", "model": "Moka P20", "status": "aktif", "firmware": "2.2.0", "last_seen_at": "D-11T13:48:00", "note": "11 gündür bağlantı yok."},
+  {"terminal_id": "TRM-9074", "merchant_id": "M-1016", "model": "Moka Go", "status": "aktif", "firmware": "1.9.3", "last_seen_at": "D0T08:44:00", "note": null},
+  {"terminal_id": "TRM-1530", "merchant_id": "M-1017", "model": "Moka P30 Pro", "status": "aktif", "firmware": "3.1.0", "last_seen_at": "D0T09:36:00", "note": null},
+  {"terminal_id": "TRM-2098", "merchant_id": "M-1018", "model": "Moka P20", "status": "aktif", "firmware": "2.4.1", "last_seen_at": "D0T07:58:00", "note": null}
+]

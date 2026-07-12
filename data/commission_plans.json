@@ -1,0 +1,38 @@
+[
+  {
+    "plan_id": "PLAN-STD",
+    "name": "Standart",
+    "rate_pct": 2.49,
+    "monthly_fee_try": 0,
+    "min_monthly_volume_try": 0,
+    "retention_only": false,
+    "description": "Aylık sabit ücret yok, işlem başına %2,49 komisyon. Yeni başlayan işletmeler için."
+  },
+  {
+    "plan_id": "PLAN-PLUS",
+    "name": "Esnaf Plus",
+    "rate_pct": 1.99,
+    "monthly_fee_try": 149,
+    "min_monthly_volume_try": 150000,
+    "retention_only": false,
+    "description": "Aylık 150 bin TL ve üzeri ciro yapan işletmeler için %1,99 komisyon, ayda 149 TL sabit ücret."
+  },
+  {
+    "plan_id": "PLAN-PRO",
+    "name": "Pro",
+    "rate_pct": 1.69,
+    "monthly_fee_try": 349,
+    "min_monthly_volume_try": 400000,
+    "retention_only": false,
+    "description": "Aylık 400 bin TL üzeri ciro için %1,69 komisyon, ayda 349 TL sabit ücret. Öncelikli destek dahil."
+  },
+  {
+    "plan_id": "PLAN-RET",
+    "name": "Sadakat (3 ay)",
+    "rate_pct": 1.79,
+    "monthly_fee_try": 0,
+    "min_monthly_volume_try": 0,
+    "retention_only": true,
+    "description": "Geri kazanım teklifi: 3 ay boyunca %1,79 komisyon, sabit ücret yok. Yalnızca kampanya kapsamındaki işletmelere."
+  }
+]

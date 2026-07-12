@@ -1,0 +1,12 @@
+[
+  {"batch_id": "SET-9012", "merchant_id": "M-1001", "batch_date": "D-1", "gross_try": 45230.0, "commission_try": 1126.23, "net_try": 44103.77, "payout_eta": "D+1T10:00:00", "status": "planlandı", "iban_masked": "TR** **** **** **** **44 17", "txn_count": 10},
+  {"batch_id": "SET-9011", "merchant_id": "M-1001", "batch_date": "D-2", "gross_try": 38750.0, "commission_try": 964.88, "net_try": 37785.12, "payout_eta": "D-1T10:00:00", "status": "ödendi", "iban_masked": "TR** **** **** **** **44 17", "txn_count": 5},
+  {"batch_id": "SET-8990", "merchant_id": "M-1001", "batch_date": "D-3", "gross_try": 21400.0, "commission_try": 532.86, "net_try": 20867.14, "payout_eta": "D-2T10:00:00", "status": "beklemede", "iban_masked": "TR** **** **** **** **44 17", "txn_count": 3, "note": "Banka tarafında doğrulama beklemede — 3 gündür gecikmiş."},
+
+  {"batch_id": "SET-8801", "merchant_id": "M-1007", "batch_date": "D-9", "gross_try": 850.0, "commission_try": 21.17, "net_try": 828.83, "payout_eta": "D-8T10:00:00", "status": "ödendi", "iban_masked": "TR** **** **** **** **73 91", "txn_count": 1},
+  {"batch_id": "SET-8788", "merchant_id": "M-1007", "batch_date": "D-12", "gross_try": 1120.0, "commission_try": 27.89, "net_try": 1092.11, "payout_eta": "D-11T10:00:00", "status": "ödendi", "iban_masked": "TR** **** **** **** **73 91", "txn_count": 1},
+
+  {"batch_id": "SET-9015", "merchant_id": "M-1003", "batch_date": "D-1", "gross_try": 7220.0, "commission_try": 143.68, "net_try": 7076.32, "payout_eta": "D+1T10:00:00", "status": "planlandı", "iban_masked": "TR** **** **** **** **12 84", "txn_count": 2},
+  {"batch_id": "SET-9010", "merchant_id": "M-1002", "batch_date": "D-2", "gross_try": 9640.0, "commission_try": 191.84, "net_try": 9448.16, "payout_eta": "D-1T10:00:00", "status": "ödendi", "iban_masked": "TR** **** **** **** **71 09", "txn_count": 4},
+  {"batch_id": "SET-9008", "merchant_id": "M-1004", "batch_date": "D-2", "gross_try": 18320.0, "commission_try": 309.61, "net_try": 18010.39, "payout_eta": "D-1T10:00:00", "status": "ödendi", "iban_masked": "TR** **** **** **** **55 30", "txn_count": 6}
+]

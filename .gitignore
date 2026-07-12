@@ -13,3 +13,4 @@ whatsapp_mesaj_bot/.wwebjs_cache/
 
 # Panel foto yuklemeleri (runtime verisi)
 data/uploads/
+.venv/

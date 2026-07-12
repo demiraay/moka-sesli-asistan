@@ -1,0 +1,106 @@
+[
+  {
+    "issue_id": "KB-POS-01",
+    "category": "pos_ariza",
+    "title": "POS cihazı açılmıyor / ekran karanlık",
+    "symptoms": ["açılmıyor", "acilmiyor", "açılmama", "ekran karanlık", "ekran kararması", "kapanıyor", "kapandı", "şarj olmuyor", "güç gelmiyor", "çalışmıyor"],
+    "steps": [
+      "Şarj kablosunu cihaza ve prize takın, 10 dakika bekleyin.",
+      "Güç tuşuna 8 saniye basılı tutun.",
+      "Kabloda ve şarj girişinde hasar olup olmadığını kontrol edin."
+    ],
+    "escalate_if_unresolved": true,
+    "escalation": "Cihaz değişimi için servis kaydı — 2 iş günü içinde yeni cihaz."
+  },
+  {
+    "issue_id": "KB-POS-02",
+    "category": "pos_ariza",
+    "title": "POS bağlantı hatası / işlem geçmiyor",
+    "symptoms": ["bağlanmıyor", "baglanmiyor", "bağlantı hatası", "gprs", "sinyal yok", "hat yok", "internet yok", "işlem geçmiyor", "onay gelmiyor", "timeout"],
+    "steps": [
+      "Cihazı kapatıp 30 saniye bekleyin ve yeniden açın.",
+      "Cihazın üst çubuğunda sinyal seviyesini kontrol edin; sinyal yoksa cihazı pencere kenarına yaklaştırın.",
+      "Wi-Fi kullanıyorsanız modemi yeniden başlatın, GPRS'e otomatik geçişi bekleyin."
+    ],
+    "escalate_if_unresolved": true,
+    "escalation": "SIM/şebeke kontrolü için teknik servis kaydı."
+  },
+  {
+    "issue_id": "KB-POS-03",
+    "category": "pos_ariza",
+    "title": "Slip / fiş yazmıyor",
+    "symptoms": ["yazmıyor", "yazmiyor", "kağıt", "kagit", "slip", "fiş çıkmıyor", "fis", "rulo", "boş çıkıyor"],
+    "steps": [
+      "Yazıcı kapağını açıp kağıt rulosunun doğru yönde takıldığını kontrol edin (kağıt alttan beslenmeli).",
+      "Rulo bitmişse 57x40 mm termal rulo takın.",
+      "Kapağı 'klik' sesi gelene kadar bastırarak kapatın ve test fişi yazdırın."
+    ],
+    "escalate_if_unresolved": true,
+    "escalation": "Yazıcı ünitesi arızası için servis kaydı."
+  },
+  {
+    "issue_id": "KB-VPOS-01",
+    "category": "sanal_pos",
+    "title": "Sanal POS 3D Secure hatası",
+    "symptoms": ["3d", "3d secure", "sanal pos hata", "ödeme geçmiyor site", "sms gelmiyor", "doğrulama hatası", "sepette hata"],
+    "steps": [
+      "Müşterinin bankasından SMS gelip gelmediğini sorun — SMS gecikmesi en sık nedendir.",
+      "Sanal POS panelinden 'İşlem Kayıtları'nda hata kodunu kontrol edin.",
+      "Hata kodu MD-5001 ise kart 3D'ye kapalıdır; müşteri bankasını aramalı."
+    ],
+    "escalate_if_unresolved": true,
+    "escalation": "Entegrasyon ekibine teknik kayıt."
+  },
+  {
+    "issue_id": "KB-LINK-01",
+    "category": "odeme_linki",
+    "title": "Ödeme linki nasıl kullanılır?",
+    "symptoms": ["link nasıl", "ödeme linki nedir", "linkle ödeme", "link gönder", "uzaktan ödeme"],
+    "steps": [
+      "Moka uygulamasında 'Ödeme Linki Oluştur'a dokunun, tutarı girin.",
+      "Oluşan linki WhatsApp/SMS ile müşterinize gönderin.",
+      "Müşteri karttan öder, tutar hakedişinize dahil olur — ek cihaz gerekmez."
+    ],
+    "escalate_if_unresolved": false,
+    "escalation": null
+  },
+  {
+    "issue_id": "KB-FAQ-PAYOUT",
+    "category": "hakedis_sss",
+    "title": "Hakediş ne zaman yatar?",
+    "symptoms": ["ne zaman yatar", "hakediş günü", "para yatma", "valör", "kaç günde"],
+    "steps": [
+      "Gün içindeki işlemler o akşam 23:00'te gruplanır.",
+      "Toplam tutar komisyon düşüldükten sonra ertesi iş günü saat 10:00'da IBAN'ınıza gönderilir (T+1).",
+      "Hafta sonu ve resmi tatil işlemleri ilk iş günü yatar."
+    ],
+    "escalate_if_unresolved": false,
+    "escalation": null
+  },
+  {
+    "issue_id": "KB-FAQ-REFUND",
+    "category": "iade_sss",
+    "title": "İade ne kadar sürede müşteriye geçer?",
+    "symptoms": ["iade süresi", "iade ne zaman", "para iadesi", "iptal süresi"],
+    "steps": [
+      "İade işlemi anında bankaya iletilir.",
+      "Müşterinin kartına yansıması bankasına göre 2-5 iş günü sürer.",
+      "İade tutarı bir sonraki hakedişinizden mahsup edilir."
+    ],
+    "escalate_if_unresolved": false,
+    "escalation": null
+  },
+  {
+    "issue_id": "KB-FAQ-COMM",
+    "category": "komisyon_sss",
+    "title": "Komisyon nasıl hesaplanır?",
+    "symptoms": ["komisyon nasıl", "kesinti nedir", "oran nedir", "ne kadar kesiliyor"],
+    "steps": [
+      "Her işlemden, planınıza göre sabit bir yüzde komisyon kesilir.",
+      "Komisyon işlem anında hesaplanır; hakediş dökümünüzde işlem işlem görünür.",
+      "Cironuz büyüdükçe daha düşük oranlı plana geçebilirsiniz — temsilcinize sorun."
+    ],
+    "escalate_if_unresolved": false,
+    "escalation": null
+  }
+]

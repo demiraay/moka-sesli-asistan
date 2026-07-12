@@ -1,21 +1,17 @@
 [
-    {
-        "project_id": "PRJ-001",
-        "name": "Ekinciler Residence",
-        "city": "İstanbul",
-        "district": "Ümraniye",
-        "neighborhood": "Finanskent",
-        "status": "under_construction",
-        "delivery_date": "2026-06-30",
-        "description": "Finans merkezinin kalbinde, lüks ve konforun buluşma noktası.",
-        "total_land_m2": 15000,
-        "green_area_m2": 10000,
-        "social_facilities": [
-            "Indoor Pool",
-            "Gym",
-            "Sauna",
-            "Kids Playground",
-            "Parking Garage"
-        ]
-    }
+  {
+    "project_id": "MOKA",
+    "name": "Moka Sesli Asistan",
+    "company": "Moka United",
+    "city": "İstanbul",
+    "description": "İşletmeler için 7/24 sesli yapay zeka destek hattı. Hakediş, işlem, POS arızası ve komisyon sorularını tek çağrıda çözer; fırsat gördüğünde doğru Moka ürününü önerir.",
+    "assistant_name": "Ada",
+    "support_line": "0850 222 66 52",
+    "working_hours": "7/24",
+    "products": [
+      {"key": "fiziksel_pos", "label": "Fiziksel POS", "description": "Moka P20 / P30 Pro / Moka Go cihazlarıyla yüz yüze tahsilat."},
+      {"key": "sanal_pos", "label": "Sanal POS", "description": "E-ticaret sitesi ve uygulamalar için online ödeme altyapısı."},
+      {"key": "odeme_linki", "label": "Ödeme Linki", "description": "Cihazsız uzaktan tahsilat: link gönder, kartla ödensin."}
+    ]
+  }
 ]
