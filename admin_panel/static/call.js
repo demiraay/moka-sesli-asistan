@@ -79,7 +79,7 @@
     }
     if (el.btnVoicePreview) {
       el.btnVoicePreview.disabled = false;
-      el.btnVoicePreview.textContent = "▶";
+      el.btnVoicePreview.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>';
     }
   }
 
@@ -133,7 +133,7 @@
       if (meta.tool) {
         const badge = document.createElement("span");
         badge.className = "tool-badge";
-        badge.textContent = "🔧 " + meta.tool;
+        badge.textContent = meta.tool;
         metaRow.appendChild(badge);
       }
       if (meta.latency && el.latencyToggle.checked) {
@@ -317,7 +317,7 @@
 
   function interruptAgent() {
     stopAgentAudio();
-    addSysNote("↩ söze girildi");
+    addSysNote("— söze girildi —");
     setState("listening");
     startRecording();
   }
@@ -335,7 +335,7 @@
       handleTurnResponse(data);
     } catch (err) {
       pendingUpload = false;
-      addSysNote("⚠ bağlantı hatası, tekrar dinliyorum");
+      addSysNote("Bağlantı hatası — tekrar dinliyorum.");
       setState("listening");
     }
   }
@@ -351,7 +351,7 @@
       const data = await resp.json();
       handleTurnResponse(data, { skipUserBubble: true });
     } catch (err) {
-      addSysNote("⚠ bağlantı hatası");
+      addSysNote("Bağlantı hatası.");
       setState("listening");
     }
   }
@@ -360,7 +360,7 @@
     opts = opts || {};
     if (state === "ended") return;  // kapatilan cagriya gec gelen yanit yok sayilir
     if (data.error) {
-      addSysNote("⚠ " + data.error);
+      addSysNote(data.error);
       setState("listening");
       return;
     }
@@ -404,7 +404,7 @@
       await initMic();
     } catch (err) {
       micOk = false;
-      addSysNote("🎙 mikrofona erişilemedi — yazarak test modu aktif");
+      addSysNote("Mikrofona erişilemedi — yazarak test modu etkin.");
     }
 
     const merchantId = el.merchantSelect.value || cfg.merchantId;
@@ -444,7 +444,7 @@
       addBubble("agent", data.reply_text, { latency: data.latency_ms });
       playAgentAudio(data.audio_url, function () { setState("listening"); });
     } catch (err) {
-      addSysNote("⚠ arama başlatılamadı: " + err);
+      addSysNote("Arama başlatılamadı: " + err);
       setState("idle");
       el.btnStart.disabled = false;
       el.btnStart.textContent = "Aramayı Başlat";
@@ -475,7 +475,7 @@
         body: JSON.stringify({ call_id: callId, mode: cfg.mode, outcome: outcome || "ended" }),
       });
       const data = await resp.json();
-      if (data.summary) addSysNote("📋 Çağrı özeti: " + data.summary);
+      if (data.summary) addSysNote("Çağrı özeti: " + data.summary);
     } catch (e) { /* sessiz */ }
     // yeni arama icin kurulum panelini geri getir
     setTimeout(function () {
@@ -501,7 +501,7 @@
       previewAudio.onended = stopPreview;
       previewAudio.onerror = stopPreview;
       previewAudio.play()
-        .then(function () { el.btnVoicePreview.disabled = false; el.btnVoicePreview.textContent = "🔊"; })
+        .then(function () { el.btnVoicePreview.disabled = false; el.btnVoicePreview.textContent = "II"; })
         .catch(stopPreview);
     });
   }

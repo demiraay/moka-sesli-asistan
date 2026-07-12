@@ -11,7 +11,7 @@
   <section class="notes-card" style="margin-bottom: 18px;">
     <div class="notes-header">
       <div>
-        <h2>🎙 Ada'nın Sesi</h2>
+        <h2>Ada'nın Sesi</h2>
         <p>Sesli asistanın konuşma sesi — değişiklik bir sonraki aramadan itibaren geçerli olur.</p>
       </div>
     </div>
@@ -23,7 +23,7 @@
           </option>
         {% endfor %}
       </select>
-      <button type="button" class="button secondary" id="admin-voice-preview">▶ Dinle</button>
+      <button type="button" class="button secondary" id="admin-voice-preview">Dinle</button>
       <button type="submit" class="button">Kaydet</button>
     </form>
     <script>
@@ -35,9 +35,9 @@
           if (audio) { audio.pause(); audio = null; }
           btn.disabled = true; btn.textContent = "Yükleniyor…";
           audio = new Audio("/call/voice-preview/" + sel.value);
-          audio.onended = audio.onerror = function () { btn.disabled = false; btn.textContent = "▶ Dinle"; };
-          audio.play().then(function () { btn.textContent = "🔊 Çalıyor"; btn.disabled = false; })
-               .catch(function () { btn.disabled = false; btn.textContent = "▶ Dinle"; });
+          audio.onended = audio.onerror = function () { btn.disabled = false; btn.textContent = "Dinle"; };
+          audio.play().then(function () { btn.textContent = "Çalıyor…"; btn.disabled = false; })
+               .catch(function () { btn.disabled = false; btn.textContent = "Dinle"; });
         });
       })();
     </script>

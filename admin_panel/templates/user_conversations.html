@@ -92,17 +92,17 @@
               {{ STAGE_LABELS.get(event.payload.get('from'), event.payload.get('from')) }} →
               <strong>{{ STAGE_LABELS.get(event.payload.get('to'), event.payload.get('to')) }}</strong>
             {% elif event.event_type == 'offer_created' %}
-              📄 <strong>Teklif #{{ event.payload.get('offer_id') }}</strong>
+              <strong>Teklif #{{ event.payload.get('offer_id') }}</strong>
             {% elif event.event_type == 'option_placed' %}
               ⏳ <strong>Opsiyon</strong> ({{ event.payload.get('inventory_id') }}, {{ event.payload.get('hours') }}s)
             {% elif event.event_type == 'option_expired' %}
               ⌛ <strong>Opsiyon süresi doldu</strong> ({{ event.payload.get('inventory_id') }})
             {% elif event.event_type == 'deposit_placed' %}
-              💰 <strong>Kapora</strong> ({{ event.payload.get('inventory_id') }})
+              <strong>Kapora</strong> ({{ event.payload.get('inventory_id') }})
             {% elif event.event_type == 'reservation_released' %}
-              ↩︎ <strong>Rezervasyon iptal</strong> ({{ event.payload.get('inventory_id') }})
+              ︎ <strong>Rezervasyon iptal</strong> ({{ event.payload.get('inventory_id') }})
             {% elif event.event_type == 'handoff_claimed' %}
-              ✅ <strong>Devralındı</strong>
+              <strong>Devralındı</strong>
             {% else %}
               {{ event.event_type }}
             {% endif %}
