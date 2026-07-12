@@ -90,4 +90,6 @@ class ResponseBuilder:
         return self.context
 
     def to_json(self) -> str:
-        return json.dumps(self.context, ensure_ascii=False, indent=2)
+        # Kompakt format: bu JSON her turda LLM prompt'una gomulur; girintili
+        # halin fazladan token'i Groq free tier TPM butcesini yiyordu.
+        return json.dumps(self.context, ensure_ascii=False, separators=(",", ":"))

@@ -51,9 +51,11 @@ class AgentOrchestrator:
         if amount >= 1_000:
             thousands = amount // 1_000
             remainder = amount % 1_000
+            # "1 bin 250" kulaga yanlis gelir; Turkcede "bin 250" denir.
+            prefix = "bin" if thousands == 1 else f"{thousands} bin"
             if remainder:
-                return f"{thousands} bin {remainder} TL"
-            return f"{thousands} bin TL"
+                return f"{prefix} {remainder} TL"
+            return f"{prefix} TL"
 
         return f"{amount} TL"
 
@@ -573,23 +575,21 @@ class AgentOrchestrator:
         )
 
     def _build_response_user_prompt(self, user_input: str, user_profile: Dict[str, Any], history: List[Dict[str, Any]]) -> str:
-        recent_turns = history[-6:]
+        # Kart blogu system prompt'ta zaten var; burada tekrarlamak cift token.
+        recent_turns = history[-4:]
         history_lines = []
         for turn in recent_turns:
             role = turn.get("role", "unknown")
             text = turn.get("text", "")
             history_lines.append(f"{role}: {text}")
 
-        card_block = self._build_customer_card_prompt(user_profile)
-
         return (
             f"CURRENT USER MESSAGE:\n{user_input}\n\n"
             f"RECENT CONVERSATION:\n" + ("\n".join(history_lines) if history_lines else "No previous turns.") + "\n\n"
-            + (card_block + "\n\n" if card_block else "")
-            + "Reply naturally in Turkish. The MUSTERI KARTI above is the caller's current "
-            "truth — if older messages conflict, follow the card. Give ONE useful point plus "
-            "at most ONE short question; no filler, no repeating what they already told you, "
-            "and never ask for info the card already has."
+            "Reply naturally in Turkish. The MUSTERI KARTI in your system prompt is the "
+            "caller's current truth — if older messages conflict, follow the card. Give ONE "
+            "useful point plus at most ONE short question; no filler, no repeating what they "
+            "already told you, and never ask for info the card already has."
         )
 
     def _merge_contextual_filters(

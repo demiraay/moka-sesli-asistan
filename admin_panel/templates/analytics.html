@@ -5,11 +5,11 @@
 {% block content %}
   <div class="page-header">
     <h1>Analitik &amp; Raporlar</h1>
-    <p>Dönüşüm hunisi, talep-stok baskisi ve AI performansı. Fiyatlama ve pazarlama kararlarinin veri kaynagi.</p>
+    <p>Dönüşüm hunisi, gelir etkisi ve AI performansı — sesli destek operasyonunun veri kaynağı.</p>
   </div>
 
   <div class="section-toolbar">
-    <div class="meta-pill">{{ report.total_leads }} lead · {{ report.ai_performance.total_sessions }} oturum</div>
+    <div class="meta-pill">{{ report.total_leads }} müşteri · {{ report.ai_performance.total_sessions }} oturum</div>
     <div class="filters-actions">
       <a class="button secondary" href="{{ url_for('export_leads_csv') }}">Lead CSV indir</a>
       <a class="button secondary" href="{{ url_for('export_conversations_csv') }}">Konuşma CSV indir</a>
@@ -33,67 +33,42 @@
         {% endfor %}
       </div>
       {% if report.lost_count %}
-        <p class="chart-note">Ayrica {{ report.lost_count }} lead "Kayip" olarak isaretlendi.</p>
+        <p class="chart-note">Ayrıca {{ report.lost_count }} müşteri "Kayıp" olarak işaretlendi.</p>
       {% endif %}
     {% else %}
-      <p class="empty-inline">Henuz lead verisi yok.</p>
+      <p class="empty-inline">Henüz müşteri verisi yok.</p>
     {% endif %}
   </section>
 
   <section class="chart-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 18px;">
     <article class="chart-card">
-      <h2>Tip Bazli Talep vs Stok</h2>
-      <p class="chart-note">Baski = talep / satıştaki stok. Yüksek baski fiyat artisi sinyalidir.</p>
-      {% if report.demand_by_type %}
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Tip</th><th>Talep</th><th>Stok</th><th>Baski</th></tr></thead>
-            <tbody>
-              {% for row in report.demand_by_type %}
-                <tr>
-                  <td>{{ row.label }}</td>
-                  <td>{{ row.demand }}</td>
-                  <td>{{ row.stock }}</td>
-                  <td>
-                    <span class="pressure-pill {{ 'high' if row.pressure >= 0.5 else ('mid' if row.pressure >= 0.1 else 'low') }}">
-                      {{ row.pressure }}
-                    </span>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="empty-inline">Henuz talep verisi olusmadi.</p>
-      {% endif %}
+      <h2>Gelir Etkisi</h2>
+      <p class="chart-note">AI'nin ürettiği somut para etkisi — destek hattı maliyet değil, gelir kanalı.</p>
+      <div class="notes-grid">
+        <article class="note-chip"><span>Kurtarılan hacim (aylık)</span><strong>{{ revenue.recovered_volume_try | tl }}</strong></article>
+        <article class="note-chip"><span>Kabul edilen teklif</span><strong>{{ revenue.offers_accepted }}</strong></article>
+        <article class="note-chip"><span>Oluşturulan ödeme linki</span><strong>{{ revenue.payment_links }}</strong></article>
+        <article class="note-chip"><span>Bugünkü sesli çağrı</span><strong>{{ revenue.calls_today }}</strong></article>
+      </div>
     </article>
 
     <article class="chart-card">
-      <h2>Cephe Bazli Talep vs Stok</h2>
-      <p class="chart-note">Müşterilerin istedigi cepheler ile eldeki stok karsilastirmasi.</p>
-      {% if report.demand_by_direction %}
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Cephe</th><th>Talep</th><th>Stok</th><th>Baski</th></tr></thead>
-            <tbody>
-              {% for row in report.demand_by_direction %}
-                <tr>
-                  <td>{{ row.label }}</td>
-                  <td>{{ row.demand }}</td>
-                  <td>{{ row.stock }}</td>
-                  <td>
-                    <span class="pressure-pill {{ 'high' if row.pressure >= 0.5 else ('mid' if row.pressure >= 0.1 else 'low') }}">
-                      {{ row.pressure }}
-                    </span>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+      <h2>Kanal Dağılımı</h2>
+      <p class="chart-note">Sesli hat birincil kanal; WhatsApp yazılı yedek kanal olarak yaşıyor.</p>
+      {% set perf = report.ai_performance %}
+      {% if perf.channel_counts %}
+        <div class="demand-list">
+          {% set max_ch = perf.channel_counts.values() | max %}
+          {% for channel, count in perf.channel_counts.items() %}
+            <div class="demand-row">
+              <span class="demand-label">{{ 'Sesli' if channel == 'voice' else ('WhatsApp' if channel == 'whatsapp' else channel) }}</span>
+              <span class="demand-bar"><i style="width: {{ (count / max_ch * 100) | round(1) }}%"></i></span>
+              <span class="demand-count">{{ count }}</span>
+            </div>
+          {% endfor %}
         </div>
       {% else %}
-        <p class="empty-inline">Henuz cephe talebi olusmadi.</p>
+        <p class="empty-inline">Henüz kanal verisi yok.</p>
       {% endif %}
     </article>
   </section>
@@ -103,8 +78,8 @@
       <h2>AI Performansı</h2>
       {% set perf = report.ai_performance %}
       <div class="notes-grid">
-        <article class="note-chip"><span>AI tek basina cozdu</span><strong>%{{ perf.containment_pct }}</strong></article>
-        <article class="note-chip"><span>Insana devir oranı</span><strong>%{{ perf.handoff_rate_pct }}</strong></article>
+        <article class="note-chip"><span>AI tek başına çözdü</span><strong>%{{ perf.containment_pct }}</strong></article>
+        <article class="note-chip"><span>İnsana devir oranı</span><strong>%{{ perf.handoff_rate_pct }}</strong></article>
         <article class="note-chip"><span>Toplam oturum</span><strong>{{ perf.total_sessions }}</strong></article>
         <article class="note-chip"><span>Ortalama tur/oturum</span><strong>{{ perf.avg_turns_per_session }}</strong></article>
       </div>
@@ -118,8 +93,8 @@
     </article>
 
     <article class="chart-card">
-      <h2>Arac Kullanımı (Router)</h2>
-      <p class="chart-note">AI'in hangi araci ne siklikta sectigi — davranis dengesinin göstergesi.</p>
+      <h2>Araç Kullanımı (Router)</h2>
+      <p class="chart-note">AI'nin hangi aracı ne sıklıkta seçtiği — davranış dengesinin göstergesi.</p>
       {% if report.tool_usage %}
         <div class="demand-list">
           {% set max_tool = report.tool_usage[0].count %}
@@ -132,7 +107,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <p class="empty-inline">Henuz konuşma verisi yok.</p>
+        <p class="empty-inline">Henüz konuşma verisi yok.</p>
       {% endif %}
     </article>
   </section>

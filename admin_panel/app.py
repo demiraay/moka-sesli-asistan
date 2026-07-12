@@ -204,6 +204,7 @@ def create_app(
         return render_template(
             "analytics.html",
             report=admin_store.get_analytics_report(),
+            revenue=admin_store.get_revenue_kpis(),
         )
 
     @app.route("/admin/analytics/export/leads.csv")

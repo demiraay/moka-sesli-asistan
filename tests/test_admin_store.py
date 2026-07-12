@@ -315,7 +315,7 @@ class TestAdminStore(unittest.TestCase):
 
     def test_briefing_context_and_storage(self):
         context = self.store.get_briefing_context()
-        for key in ("kpis", "stok", "sicak_leadler", "insan_bekleyenler", "takip_listesi", "son_aktivite"):
+        for key in ("kpis", "gelir", "dikkat_isteyen_musteriler", "insan_bekleyenler", "takip_listesi", "son_aktivite"):
             self.assertIn(key, context)
 
         self.assertIsNone(self.store.get_latest_briefing())
@@ -337,7 +337,7 @@ class TestAdminStore(unittest.TestCase):
         # Sistem prompt'u kurallari, kullanici prompt'u veriyi tasimali
         kwargs = llm.generate.call_args.kwargs
         self.assertIn("brifing", kwargs["system_prompt"].lower())
-        self.assertIn("sicak_leadler", kwargs["user_prompt"])
+        self.assertIn("dikkat_isteyen_musteriler", kwargs["user_prompt"])
 
     def test_generate_briefing_raises_on_llm_error(self):
         from core.briefing import generate_briefing

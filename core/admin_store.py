@@ -2334,15 +2334,20 @@ class AdminStore:
             {
                 "musteri": lead["name"] or lead["user_id"],
                 "ozet": lead["summary"][:120],
-                "tercih": lead.get("preferred_flat_type"),
-                "butce": lead.get("budget_max_try"),
+                "konu": (lead.get("ai_summary") or "")[:60],
             }
             for lead in analytics["hot_leads"][:5]
         ]
+        revenue = self.get_revenue_kpis()
         return {
             "kpis": analytics["kpis"],
-            "stok": analytics["inventory"],
-            "sicak_leadler": hot_leads,
+            "gelir": {
+                "kurtarilan_hacim_try": revenue["recovered_volume_try"],
+                "teklif_kabul": revenue["offers_accepted"],
+                "odeme_linki": revenue["payment_links"],
+                "cozum_orani_pct": revenue["containment_pct"],
+            },
+            "dikkat_isteyen_musteriler": hot_leads,
             "insan_bekleyenler": queue,
             "takip_listesi": followups,
             "son_aktivite": [

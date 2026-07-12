@@ -188,12 +188,16 @@ def main() -> int:
     _load_env_file()
     print(f"[server] Python executable: {sys.executable}")
     print(f"[server] Service Python: {SERVICE_PYTHON}")
+
+    # WhatsApp ikincil kanal: Node kurulmamissa bot atlanir, sesli demo etkilenmez.
+    services = list(SERVICES)
     if not _preflight_node_modules_check():
-        return 1
+        print("[server] WhatsApp botu ATLANIYOR — sesli asistan ve panel tam calisir.")
+        services = [s for s in services if s["name"] != "whatsapp-bot"]
     if not _preflight_port_check():
         return 1
 
-    for service in SERVICES:
+    for service in services:
         env = os.environ.copy()
         env.update(service["env"])
 

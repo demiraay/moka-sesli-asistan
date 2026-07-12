@@ -1,7 +1,8 @@
 """AI gunluk brifing uretimi.
 
-Panel verilerinden (KPI, sicak leadler, bekleyen handoff'lar, takip listesi,
-stok) LLM ile danisman icin kisa bir Turkce sabah brifingi uretir ve kaydeder.
+Panel verilerinden (KPI, gelir olaylari, bekleyen handoff'lar, uyuyan
+isletmeler, takip listesi) LLM ile destek ekibi icin kisa bir Turkce sabah
+brifingi uretir ve kaydeder.
 """
 
 import json
@@ -9,13 +10,14 @@ from typing import Any, Dict
 
 from core.llm import is_llm_error
 
-BRIEFING_SYSTEM_PROMPT = """Sen bir konut projesi satış ofisinin operasyon asistanısın.
-Danışman güne başlarken okuyacağı KISA bir Türkçe brifing yazacaksın.
+BRIEFING_SYSTEM_PROMPT = """Sen Moka United'ın sesli destek operasyonunun asistanısın.
+Destek ekibi güne başlarken okuyacağı KISA bir Türkçe brifing yazacaksın.
 
 KURALLAR:
 - En fazla 8 kısa madde; her madde tek satır, başında "- " olsun.
-- Önce acil işler (bekleyen müşteriler, dolmak üzere opsiyonlar), sonra fırsatlar, sonra genel durum.
-- İsimleri, telefonları ve sayıları verilerden AYNEN kullan; asla veri uydurma.
+- Önce acil işler (insan bekleyen çağrılar, geciken hakedişler), sonra gelir fırsatları
+  (uyuyan işletmeler, bekleyen teklifler), sonra genel durum (çağrı hacmi, çözüm oranı).
+- İsimleri, işletmeleri ve sayıları verilerden AYNEN kullan; asla veri uydurma.
 - Veri yoksa o konuyu hiç yazma; boş kategoriler için madde üretme.
 - Samimi ama profesyonel bir dil kullan; emoji kullanma.
 - Sonuna tek cümlelik motive edici bir kapanış ekleyebilirsin."""
