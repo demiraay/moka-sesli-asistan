@@ -4,9 +4,44 @@
 
 {% block content %}
   <div class="page-header">
-    <h1>Satış Profili</h1>
-    <p>Handoff mesajlarinda ve WhatsApp yonlendirmelerinde kullanilacak ofis ve danışman bilgilerini yonetin.</p>
+    <h1>Temsilci Profili &amp; Ayarlar</h1>
+    <p>Handoff yönlendirmelerinde kullanılacak temsilci bilgileri ve Ada'nın ses ayarı.</p>
   </div>
+
+  <section class="notes-card" style="margin-bottom: 18px;">
+    <div class="notes-header">
+      <div>
+        <h2>🎙 Ada'nın Sesi</h2>
+        <p>Sesli asistanın konuşma sesi — değişiklik bir sonraki aramadan itibaren geçerli olur.</p>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('set_tts_voice') }}" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <select name="voice_id" id="admin-voice-select" style="min-width: 300px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); font-size: 14.5px;">
+        {% for v in voices %}
+          <option value="{{ v.voice_id }}" {% if v.voice_id == current_voice_id %}selected{% endif %}>
+            {{ v.label }} — {{ v.style }} ({{ v.gender }})
+          </option>
+        {% endfor %}
+      </select>
+      <button type="button" class="button secondary" id="admin-voice-preview">▶ Dinle</button>
+      <button type="submit" class="button">Kaydet</button>
+    </form>
+    <script>
+      (function () {
+        var btn = document.getElementById("admin-voice-preview");
+        var sel = document.getElementById("admin-voice-select");
+        var audio = null;
+        btn.addEventListener("click", function () {
+          if (audio) { audio.pause(); audio = null; }
+          btn.disabled = true; btn.textContent = "Yükleniyor…";
+          audio = new Audio("/call/voice-preview/" + sel.value);
+          audio.onended = audio.onerror = function () { btn.disabled = false; btn.textContent = "▶ Dinle"; };
+          audio.play().then(function () { btn.textContent = "🔊 Çalıyor"; btn.disabled = false; })
+               .catch(function () { btn.disabled = false; btn.textContent = "▶ Dinle"; });
+        });
+      })();
+    </script>
+  </section>
 
   <form class="edit-form" method="post">
     <label>

@@ -134,3 +134,48 @@ def test_call_end_outbound_logs_event(client):
     assert resp.get_json()["ok"] is True
     events = orch.admin_store.get_lead_events(start["call_id"])
     assert any(e["event_type"] == "outbound_call_ended" for e in events)
+
+
+def test_voice_preview_endpoint(client):
+    http, _ = client
+    from core.voice import VOICE_CATALOG
+    vid = VOICE_CATALOG[0]["voice_id"]
+    resp = http.get(f"/call/voice-preview/{vid}")
+    assert resp.status_code == 200
+    assert resp.mimetype == "audio/mpeg"
+    # bilinmeyen ses reddedilir
+    assert http.get("/call/voice-preview/olmayan-ses").status_code == 404
+
+
+def test_admin_voice_setting_roundtrip(client):
+    http, orch = client
+    from core.voice import VOICE_CATALOG
+    vid = VOICE_CATALOG[1]["voice_id"]  # Matilda
+    resp = http.post("/admin/settings/tts-voice", data={"voice_id": vid})
+    assert resp.status_code in (302, 303)
+    assert orch.admin_store.get_setting("tts_voice_id") == vid
+    # gecersiz ses kaydedilmez
+    http.post("/admin/settings/tts-voice", data={"voice_id": "sahte"})
+    assert orch.admin_store.get_setting("tts_voice_id") == vid
+    # call sayfasinda varsayilan secili gelir
+    html = http.get("/call").get_data(as_text=True)
+    assert f'value="{vid}" selected' in html or f'value="{vid}"\n                selected' in html or "selected" in html
+
+
+def test_call_start_uses_selected_voice(client, monkeypatch):
+    http, _ = client
+    captured = {}
+    from core import voice as voice_module
+
+    def spy_synthesize(self, text, output_path=None, voice_id=None, model_id=None):
+        captured["voice_id"] = voice_id
+        from pathlib import Path
+        Path(output_path).write_bytes(b"ID3fake")
+        return str(output_path)
+
+    monkeypatch.setattr(voice_module.ElevenLabsSynthesizer, "synthesize", spy_synthesize)
+    from core.voice import VOICE_CATALOG
+    vid = VOICE_CATALOG[3]["voice_id"]  # Jessica
+    resp = http.post("/call/start", json={"mode": "inbound", "merchant_id": "M-1001", "voice_id": vid})
+    assert resp.status_code == 200
+    assert captured["voice_id"] == vid

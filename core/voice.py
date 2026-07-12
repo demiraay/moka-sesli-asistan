@@ -14,6 +14,28 @@ if TYPE_CHECKING:
     from core.orchestrator import AgentOrchestrator
 
 
+# Ada icin secilebilir sesler (ElevenLabs premade — free tier API'dan kullanilabilir).
+# Panel/arama ekranindaki secim bu katalogdan yapilir; varsayilan app_settings'te tutulur.
+VOICE_CATALOG = [
+    {"voice_id": "EXAVITQu4vr4xnSDxMaL", "label": "Sarah", "style": "Dingin ve güven veren", "gender": "kadın"},
+    {"voice_id": "XrExE9yKIg1WjnnlVkGX", "label": "Matilda", "style": "Profesyonel ve bilgili", "gender": "kadın"},
+    {"voice_id": "Xb7hH8MSUJpSbSDYk0k2", "label": "Alice", "style": "Net ve akıcı", "gender": "kadın"},
+    {"voice_id": "cgSgspJ2msm6clMCkdW9", "label": "Jessica", "style": "Sıcak ve canlı", "gender": "kadın"},
+    {"voice_id": "pFZP5JQG7iQjIQuC4Bku", "label": "Lily", "style": "Yumuşak ve sakin", "gender": "kadın"},
+    {"voice_id": "cjVigY5qzO86Huf0OWal", "label": "Eric", "style": "Sakin ve güvenilir", "gender": "erkek"},
+    {"voice_id": "JBFqnCBsd6RMkjVDRZzb", "label": "George", "style": "Sıcak ve derin", "gender": "erkek"},
+]
+
+VOICE_PREVIEW_TEXT = "Merhaba, ben Ada. Moka sesli asistanınızım; size nasıl yardımcı olabilirim?"
+
+
+def get_voice_label(voice_id: str) -> str:
+    for voice in VOICE_CATALOG:
+        if voice["voice_id"] == voice_id:
+            return voice["label"]
+    return "Özel ses"
+
+
 class WhisperTranscriber:
     """Lokal whisper STT (fallback). torch/whisper importu tembeldir:
     Groq STT yolundayken agir import maliyeti odenmez."""

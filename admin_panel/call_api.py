@@ -21,7 +21,8 @@ from flask import jsonify, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from core.config import Config
-from core.voice import CompositeTranscriber, ElevenLabsSynthesizer
+from core.voice import (CompositeTranscriber, ElevenLabsSynthesizer,
+                        VOICE_CATALOG, VOICE_PREVIEW_TEXT)
 
 
 def register_call_routes(app, orchestrator) -> None:
@@ -30,15 +31,26 @@ def register_call_routes(app, orchestrator) -> None:
     synthesizer = ElevenLabsSynthesizer(config)
     voice_dir = Path(config.voice_output_dir)
     voice_dir.mkdir(parents=True, exist_ok=True)
+    # Cagri basina secilen ses: /call/start'ta belirlenir, /call/turn'de kullanilir.
+    call_voice_ids: dict[str, str] = {}
 
-    def _synthesize(text: str, prefix: str) -> tuple[str | None, int]:
+    def _default_voice_id() -> str:
+        """Adminden secilen varsayilan ses; yoksa .env'deki ses."""
+        try:
+            saved = orchestrator.admin_store.get_setting("tts_voice_id", "")
+        except Exception:
+            saved = ""
+        return saved or config.elevenlabs_voice_id
+
+    def _synthesize(text: str, prefix: str, voice_id: str | None = None) -> tuple[str | None, int]:
         """TTS calistirir; (audio_url, sure_ms) doner. Yapilandirilmamissa None."""
         if not synthesizer.is_configured():
             return None, 0
         started = time.perf_counter()
         filename = f"{prefix}-{uuid.uuid4().hex[:10]}.mp3"
         try:
-            synthesizer.synthesize(text, output_path=str(voice_dir / filename))
+            synthesizer.synthesize(text, output_path=str(voice_dir / filename),
+                                   voice_id=voice_id or _default_voice_id())
         except Exception as error:
             print(f"TTS warning: {error}")
             return None, int((time.perf_counter() - started) * 1000)
@@ -56,11 +68,15 @@ def register_call_routes(app, orchestrator) -> None:
             }
             for m in config.merchants
         ]
+        details = config.get_project_details()
         return render_template(
             "call.html",
             mode=mode,
             merchant_id=merchant_id,
             merchants=merchants,
+            voices=VOICE_CATALOG,
+            default_voice_id=_default_voice_id(),
+            support_line=details.get("support_line", ""),
         )
 
     @app.route("/call/start", methods=["POST"])
@@ -72,13 +88,15 @@ def register_call_routes(app, orchestrator) -> None:
 
         # Her cagri taze bir oturum acar: demo sirasinda onceki konusma sizmasin.
         call_id = f"call-{uuid.uuid4().hex[:8]}"
+        voice_id = payload.get("voice_id") or _default_voice_id()
+        call_voice_ids[call_id] = voice_id
 
         started = time.perf_counter()
         result = orchestrator.start_call(
             call_id, channel="voice", mode=mode, merchant_id=merchant_id, goal=goal
         )
         llm_ms = int((time.perf_counter() - started) * 1000)
-        audio_url, tts_ms = _synthesize(result["reply_text"], f"greet-{call_id}")
+        audio_url, tts_ms = _synthesize(result["reply_text"], f"greet-{call_id}", voice_id)
 
         return jsonify({
             "call_id": call_id,
@@ -131,7 +149,8 @@ def register_call_routes(app, orchestrator) -> None:
         llm_ms = int((time.perf_counter() - started) * 1000)
 
         reply_text = turn["agent_response"]
-        audio_url, tts_ms = _synthesize(reply_text, f"reply-{call_id}")
+        audio_url, tts_ms = _synthesize(reply_text, f"reply-{call_id}",
+                                        call_voice_ids.get(call_id))
 
         handoff = bool((turn.get("context") or {}).get("handoff", {}).get("required"))
         return jsonify({
@@ -148,6 +167,24 @@ def register_call_routes(app, orchestrator) -> None:
                 "total": stt_ms + llm_ms + tts_ms,
             },
         })
+
+    @app.route("/call/voice-preview/<voice_id>")
+    def voice_preview(voice_id: str):
+        """Aday sesin kisa tanitim cumlesi — ses basina bir kez sentezlenir."""
+        if not any(v["voice_id"] == voice_id for v in VOICE_CATALOG):
+            return jsonify({"error": "bilinmeyen ses"}), 404
+        filename = f"preview-{voice_id}.mp3"
+        target = voice_dir / filename
+        if not target.exists():
+            if not synthesizer.is_configured():
+                return jsonify({"error": "TTS yapilandirilmamis"}), 503
+            try:
+                synthesizer.synthesize(VOICE_PREVIEW_TEXT, output_path=str(target),
+                                       voice_id=voice_id)
+            except Exception as error:
+                print(f"Preview TTS warning: {error}")
+                return jsonify({"error": "onizleme uretilemedi"}), 502
+        return send_from_directory(voice_dir, filename, mimetype="audio/mpeg")
 
     @app.route("/call/audio/<name>")
     def call_audio(name: str):

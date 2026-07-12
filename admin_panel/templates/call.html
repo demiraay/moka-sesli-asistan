@@ -17,6 +17,9 @@
 
       <header class="call-header">
         <div class="brand">Moka <span>Sesli Asistan</span></div>
+        {% if support_line %}
+        <div class="line-chip" title="Moka Destek Hattı">📞 {{ support_line }}</div>
+        {% endif %}
         <div class="merchant-chip" id="merchant-chip" hidden>
           <span class="dot"></span>
           <span id="merchant-label"></span>
@@ -27,12 +30,9 @@
         <div class="avatar-wrap" id="avatar">
           <div class="ring ring-a"></div>
           <div class="ring ring-b"></div>
-          <div class="avatar-core">
-            <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.6">
-              <path d="M12 3a3.5 3.5 0 0 0-3.5 3.5v5a3.5 3.5 0 0 0 7 0v-5A3.5 3.5 0 0 0 12 3Z"/>
-              <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/>
-              <path d="M12 18v3"/>
-            </svg>
+          <div class="orb">
+            <div class="orb-sheen"></div>
+            <div class="orb-core"></div>
           </div>
           <div class="wave" id="wave" hidden>
             <span></span><span></span><span></span><span></span><span></span>
@@ -45,19 +45,33 @@
       </div>
 
       <!-- Arama oncesi kurulum -->
-      <div class="setup" id="setup">
-        <label for="merchant-select">Arayan işletme (hat kimliği)</label>
-        <select id="merchant-select">
-          {% for m in merchants %}
-          <option value="{{ m.merchant_id }}" {% if m.merchant_id == merchant_id %}selected{% endif %}>
-            {{ m.business_name }} — {{ m.owner_name }}
-          </option>
-          {% endfor %}
-        </select>
+      <div class="setup glass" id="setup">
+        <div class="setup-field">
+          <label for="merchant-select">Arayan işletme <span class="label-soft">hat kimliği</span></label>
+          <select id="merchant-select">
+            {% for m in merchants %}
+            <option value="{{ m.merchant_id }}" {% if m.merchant_id == merchant_id %}selected{% endif %}>
+              {{ m.business_name }} — {{ m.owner_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="setup-field">
+          <label for="voice-select">Ada'nın sesi</label>
+          <div class="voice-row">
+            <select id="voice-select">
+              {% for v in voices %}
+              <option value="{{ v.voice_id }}" {% if v.voice_id == default_voice_id %}selected{% endif %}>
+                {{ v.label }} — {{ v.style }}
+              </option>
+              {% endfor %}
+            </select>
+            <button type="button" class="btn-preview" id="btn-voice-preview" title="Sesi dinle">▶</button>
+          </div>
+        </div>
         <button class="btn-start" id="btn-start">
           {% if mode == 'outbound' %}AI Aramayı Başlatsın{% else %}Aramayı Başlat{% endif %}
         </button>
-        <p class="hint">🎧 En iyi deneyim için kulaklık önerilir.</p>
       </div>
 
       <!-- Arama sirasi kontrolleri -->
@@ -82,7 +96,7 @@
     </section>
 
     <!-- Sag: canli transkript -->
-    <aside class="transcript-pane">
+    <aside class="transcript-pane glass-deep">
       <header>
         <h2>Canlı Transkript</h2>
         <label class="latency-toggle"><input type="checkbox" id="latency-toggle"> Gecikme detayı</label>

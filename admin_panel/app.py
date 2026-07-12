@@ -290,6 +290,17 @@ def create_app(
             filters=filters,
         )
 
+    @app.post("/admin/settings/tts-voice")
+    def set_tts_voice():
+        from core.voice import VOICE_CATALOG, get_voice_label
+        voice_id = request.form.get("voice_id", "").strip()
+        if not any(v["voice_id"] == voice_id for v in VOICE_CATALOG):
+            flash("Geçersiz ses seçimi.", "error")
+        else:
+            admin_store.set_setting("tts_voice_id", voice_id)
+            flash(f"Ada'nın sesi güncellendi: {get_voice_label(voice_id)}.", "success")
+        return redirect(url_for("sales_profile"))
+
     @app.route("/admin/sales-profile", methods=["GET", "POST"])
     def sales_profile():
         if request.method == "POST":
@@ -297,9 +308,14 @@ def create_app(
             flash("Temsilci profili güncellendi.", "success")
             return redirect(url_for("sales_profile"))
 
+        from core.voice import VOICE_CATALOG
         return render_template(
             "sales_profile.html",
             sales_profile=admin_store.get_sales_profile(),
+            voices=VOICE_CATALOG,
+            current_voice_id=admin_store.get_setting(
+                "tts_voice_id", os.getenv("ELEVENLABS_VOICE_ID", "")
+            ),
         )
 
     @app.route("/admin/exceptions", methods=["GET", "POST"])

@@ -33,6 +33,15 @@ class AdminStore:
         with self._connect() as connection:
             connection.execute(
                 """
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS conversation_sessions (
                     session_id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -1199,6 +1208,21 @@ class AdminStore:
             connection.execute(
                 "INSERT INTO lead_events (user_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
                 (user_id, event_type, json.dumps(payload, ensure_ascii=False), self._utc_now()),
+            )
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM app_settings WHERE key = ?", (key,)
+            ).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                (key, value, self._utc_now()),
             )
 
     def record_lead_event(self, user_id: str, event_type: str, payload: Dict[str, Any]) -> None:

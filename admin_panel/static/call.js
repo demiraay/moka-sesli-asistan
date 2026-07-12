@@ -19,6 +19,8 @@
     timer: document.getElementById("call-timer"),
     setup: document.getElementById("setup"),
     merchantSelect: document.getElementById("merchant-select"),
+    voiceSelect: document.getElementById("voice-select"),
+    btnVoicePreview: document.getElementById("btn-voice-preview"),
     btnStart: document.getElementById("btn-start"),
     controls: document.getElementById("controls"),
     btnInterrupt: document.getElementById("btn-interrupt"),
@@ -67,7 +69,7 @@
 
   const STATE_LABELS = {
     idle: "Aramayı başlatmak için dokunun",
-    connecting: "Bağlanıyor…",
+    connecting: "Moka Destek Hattı aranıyor…",
     speaking: "Ada konuşuyor…",
     listening: "Sizi dinliyorum…",
     thinking: "Bakıyorum…",
@@ -362,7 +364,11 @@
       const resp = await fetch("/call/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: cfg.mode, merchant_id: merchantId }),
+        body: JSON.stringify({
+          mode: cfg.mode,
+          merchant_id: merchantId,
+          voice_id: el.voiceSelect ? el.voiceSelect.value : null,
+        }),
       });
       const data = await resp.json();
       callId = data.call_id;
@@ -430,6 +436,27 @@
 
   // --- olaylar ---
   el.btnStart.addEventListener("click", startCall);
+
+  // Ses onizleme: adayin kisa tanitim cumlesi calinir
+  if (el.btnVoicePreview && el.voiceSelect) {
+    let previewAudio = null;
+    el.btnVoicePreview.addEventListener("click", function () {
+      if (previewAudio) { previewAudio.pause(); previewAudio = null; }
+      el.btnVoicePreview.disabled = true;
+      el.btnVoicePreview.textContent = "…";
+      previewAudio = new Audio("/call/voice-preview/" + el.voiceSelect.value);
+      const reset = function () {
+        el.btnVoicePreview.disabled = false;
+        el.btnVoicePreview.textContent = "▶";
+        previewAudio = null;
+      };
+      previewAudio.onended = reset;
+      previewAudio.onerror = reset;
+      previewAudio.play()
+        .then(function () { el.btnVoicePreview.disabled = false; el.btnVoicePreview.textContent = "🔊"; })
+        .catch(reset);
+    });
+  }
   el.btnEnd.addEventListener("click", function () { endCall("ended"); });
   el.btnInterrupt.addEventListener("click", interruptAgent);
 
