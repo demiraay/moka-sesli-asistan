@@ -511,3 +511,170 @@ body::before {
 
 /* Hakem bulgusu #3: author display kurallari UA [hidden]'i ezmesin */
 [hidden] { display: none !important; }
+
+/* ---------------- musterinin telefonu (canli simulasyon) ---------------- */
+
+.call-shell {
+  grid-template-columns: 360px 1fr 390px;
+}
+.call-shell.no-transcript { grid-template-columns: 360px 1fr 0px; }
+@media (max-width: 1200px) {
+  .call-shell, .call-shell.no-transcript { grid-template-columns: 1fr 390px; }
+  .caller-pane { display: none; }
+}
+@media (max-width: 900px) {
+  .call-shell, .call-shell.no-transcript { grid-template-columns: 1fr; }
+}
+
+.caller-pane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px 10px;
+  border-right: 1px solid var(--line);
+}
+
+.phone-frame {
+  width: 290px;
+  border-radius: 44px;
+  padding: 10px;
+  background: linear-gradient(160deg, #2a3444, #10141c 70%);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.phone-screen {
+  position: relative;
+  border-radius: 36px;
+  min-height: 560px;
+  padding: 14px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(320px 260px at 50% -8%, rgba(77, 163, 255, 0.16), transparent 65%),
+    linear-gradient(180deg, #0b1424, #060b16);
+  overflow: hidden;
+}
+.phone-notch {
+  position: absolute;
+  top: 10px; left: 50%;
+  transform: translateX(-50%);
+  width: 110px; height: 24px;
+  border-radius: 999px;
+  background: #05080f;
+}
+.phone-status {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+  padding: 4px 6px 0;
+}
+.phone-signal { letter-spacing: 1px; font-size: 10px; }
+
+.phone-callinfo { text-align: center; margin-top: 42px; }
+.phone-avatar {
+  width: 74px; height: 74px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 30px;
+  background: linear-gradient(150deg, rgba(0, 210, 100, 0.25), rgba(77, 163, 255, 0.2));
+  border: 1px solid var(--line);
+}
+.phone-callee { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.phone-number { font-size: 13px; color: var(--muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.phone-timer { font-size: 13px; color: var(--green); margin-top: 8px; font-variant-numeric: tabular-nums; min-height: 18px; }
+
+.phone-caption-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px;
+}
+.phone-mic {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px;
+  color: var(--green);
+  background: rgba(0, 210, 100, 0.1);
+  border: 1px solid rgba(0, 210, 100, 0.3);
+  padding: 7px 13px;
+  border-radius: 999px;
+}
+.phone-mic .eq { display: flex; gap: 2.5px; align-items: flex-end; height: 12px; }
+.phone-mic .eq i {
+  width: 3px; height: 5px;
+  border-radius: 2px;
+  background: var(--green);
+  animation: wavebar 0.7s ease-in-out infinite;
+}
+.phone-mic .eq i:nth-child(2) { animation-delay: 0.15s; }
+.phone-mic .eq i:nth-child(3) { animation-delay: 0.3s; }
+
+.phone-caption {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  border-radius: 14px 14px 4px 14px;
+  padding: 9px 12px;
+  max-width: 100%;
+  animation: rise 0.25s ease-out;
+}
+
+.phone-actions {
+  display: flex;
+  justify-content: center;
+  gap: 26px;
+  margin: 6px 0 16px;
+}
+.phone-action { text-align: center; color: var(--muted); }
+.phone-action small { display: block; font-size: 10.5px; margin-top: 5px; }
+.pa-btn {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 19px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
+  opacity: 0.75;
+}
+
+.phone-end {
+  width: 58px; height: 58px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(160deg, #ff6b6b, #e64545);
+  color: #fff;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 22px rgba(255, 93, 93, 0.4);
+  transition: transform 0.15s;
+}
+.phone-end:hover { transform: scale(1.07); }
+
+.caller-label {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* outbound: telefon caliyor animasyonu */
+.mode-outbound .phone-avatar { animation: ring-shake 1.1s ease-in-out infinite; }
+.mode-outbound .phone-screen.in-call .phone-avatar { animation: none; }
+@keyframes ring-shake {
+  0%, 100% { transform: rotate(0); }
+  10% { transform: rotate(-8deg); }
+  20% { transform: rotate(8deg); }
+  30% { transform: rotate(-6deg); }
+  40% { transform: rotate(6deg); }
+  50% { transform: rotate(0); }
+}

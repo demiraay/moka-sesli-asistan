@@ -34,7 +34,27 @@
     merchantLabel: document.getElementById("merchant-label"),
     handoffNote: document.getElementById("handoff-note"),
     transcriptToggle: document.getElementById("transcript-toggle"),
+    phoneClock: document.getElementById("phone-clock"),
+    phoneTimer: document.getElementById("phone-timer"),
+    phoneMic: document.getElementById("phone-mic"),
+    phoneCaption: document.getElementById("phone-caption"),
+    phoneEnd: document.getElementById("phone-end"),
+    phoneScreen: document.querySelector(".phone-screen"),
   };
+
+  // Telefon saat gostergesi (statuko cubugu)
+  if (el.phoneClock) {
+    var _now = new Date();
+    el.phoneClock.textContent =
+      String(_now.getHours()).padStart(2, "0") + ":" + String(_now.getMinutes()).padStart(2, "0");
+  }
+
+  function phoneSetTimer(text) { if (el.phoneTimer) el.phoneTimer.textContent = text; }
+  function phoneShowMic(on) { if (el.phoneMic) el.phoneMic.hidden = !on; }
+  function phoneShowCaption(text) {
+    if (!el.phoneCaption) return;
+    if (text) { el.phoneCaption.textContent = "\u201C" + text + "\u201D"; el.phoneCaption.hidden = false; }
+  }
 
   // --- durum ---
   let state = "idle";
@@ -144,8 +164,10 @@
     el.timer.hidden = false;
     timerInterval = setInterval(function () {
       const s = Math.floor((Date.now() - callStartAt) / 1000);
-      el.timer.textContent =
+      const label =
         String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+      el.timer.textContent = label;
+      phoneSetTimer(label);
     }, 500);
   }
 
@@ -266,9 +288,11 @@
     };
     recorder.start();
     recordingStartedAt = performance.now();
+    phoneShowMic(true);
   }
 
   function discardRecording() {
+    phoneShowMic(false);
     if (!recorder) return;
     recorder.onstop = null;
     try { recorder.stop(); } catch (e) { /* zaten durmus */ }
@@ -281,6 +305,7 @@
     if (!recorder || recorder.state !== "recording") return;
     silenceSince = 0;
     pendingUpload = true;
+    phoneShowMic(false);
     recorder.onstop = function () {
       const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
       chunks = [];
@@ -346,6 +371,7 @@
     if (data.transcript && !opts.skipUserBubble) {
       addBubble("user", data.transcript);
     }
+    if (data.transcript) phoneShowCaption(data.transcript);
     addBubble("agent", data.reply_text, {
       tool: data.tool,
       latency: data.latency_ms,
@@ -368,6 +394,7 @@
   // --- cagri yasam dongusu ---
   async function startCall() {
     stopPreview();  // onizleme selamlamayla cakismasin, VAD kalibrasyonunu bozmasin
+    phoneSetTimer(cfg.mode === "outbound" ? "gelen arama…" : "aranıyor…");
     el.btnStart.disabled = true;
     el.btnStart.textContent = "Bağlanıyor…";
     setState("connecting");
@@ -412,6 +439,8 @@
         el.textForm.hidden = false;
       }
 
+      if (el.phoneScreen) el.phoneScreen.classList.add("in-call");
+      phoneSetTimer("00:00");
       addBubble("agent", data.reply_text, { latency: data.latency_ms });
       playAgentAudio(data.audio_url, function () { setState("listening"); });
     } catch (err) {
@@ -432,6 +461,9 @@
     if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
     if (timerInterval) clearInterval(timerInterval);
     setState("ended");
+    phoneSetTimer("arama sona erdi");
+    phoneShowMic(false);
+    if (el.phoneScreen) el.phoneScreen.classList.remove("in-call");
     el.controls.hidden = true;
     el.textForm.hidden = true;
     el.textToggle.checked = false;
@@ -474,6 +506,9 @@
     });
   }
   el.btnEnd.addEventListener("click", function () { endCall("ended"); });
+  if (el.phoneEnd) el.phoneEnd.addEventListener("click", function () {
+    if (state !== "idle" && state !== "ended") endCall("ended");
+  });
   el.btnInterrupt.addEventListener("click", interruptAgent);
 
   el.textToggle.addEventListener("change", function () {
@@ -496,6 +531,7 @@
     pendingUpload = false;
     el.textField.value = "";
     stopAgentAudio();
+    phoneShowCaption(text);
     sendTextTurn(text);
   });
 

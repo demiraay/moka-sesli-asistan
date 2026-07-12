@@ -9,7 +9,43 @@
 <body class="mode-{{ mode }}">
   <main class="call-shell">
 
-    <!-- Sol: telefon ekrani -->
+    <!-- Sol: musterinin telefonu (canli simulasyon) -->
+    <aside class="caller-pane">
+      <div class="phone-frame">
+        <div class="phone-screen">
+          <div class="phone-notch"></div>
+          <div class="phone-status">
+            <span id="phone-clock">--:--</span>
+            <span class="phone-signal">●●●○ &nbsp;📶 &nbsp;🔋</span>
+          </div>
+          <div class="phone-callinfo">
+            <div class="phone-avatar">{% if mode == 'outbound' %}Ⓜ️{% else %}📞{% endif %}</div>
+            <div class="phone-callee" id="phone-callee">{% if mode == 'outbound' %}Moka United{% else %}Moka Destek Hattı{% endif %}</div>
+            <div class="phone-number">{{ support_line or "0850 222 66 52" }}</div>
+            <div class="phone-timer" id="phone-timer">{% if mode == 'outbound' %}gelen arama…{% else %}aramaya hazır{% endif %}</div>
+          </div>
+          <div class="phone-caption-area">
+            <div class="phone-mic" id="phone-mic" hidden>
+              <span class="eq"><i></i><i></i><i></i></span> Konuşuyorsunuz…
+            </div>
+            <div class="phone-caption" id="phone-caption" hidden></div>
+          </div>
+          <div class="phone-actions">
+            <div class="phone-action"><span class="pa-btn">🔇</span><small>sustur</small></div>
+            <div class="phone-action"><span class="pa-btn">⌨</span><small>tuşlar</small></div>
+            <div class="phone-action"><span class="pa-btn">🔊</span><small>hoparlör</small></div>
+          </div>
+          <button class="phone-end" id="phone-end" title="Aramayı bitir">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+              <path d="M21.7 15.4l-3.2-1.3a1.4 1.4 0 0 0-1.5.3l-1.4 1.4a14.7 14.7 0 0 1-7.4-7.4L9.6 7a1.4 1.4 0 0 0 .3-1.5L8.6 2.3A1.4 1.4 0 0 0 7.2 1.5 5.7 5.7 0 0 0 2 7.2 16.8 16.8 0 0 0 16.8 22a5.7 5.7 0 0 0 5.7-5.2 1.4 1.4 0 0 0-.8-1.4z" transform="rotate(135 12 12)"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <p class="caller-label">{% if mode == 'outbound' %}Müşterinin telefonu — Ada arıyor{% else %}Müşterinin telefonu (canlı simülasyon){% endif %}</p>
+    </aside>
+
+    <!-- Orta: Ada -->
     <section class="phone-pane">
       {% if mode == 'outbound' %}
       <div class="outbound-banner">📞 Giden arama — uyuyan işletme kampanyası</div>
