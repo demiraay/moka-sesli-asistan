@@ -70,6 +70,20 @@ class AgentOrchestrator:
         local, domain = email.split("@", 1)
         return f"{local[0]}***@{domain}"
 
+    @staticmethod
+    def _speakable_iban(masked_iban: str) -> str:
+        """Maskeli IBAN'i sesli okumaya uygun hale getirir.
+
+        "TR** **** **** **** **44 17" gibi metinler TTS'te felaket okunur;
+        bunun yerine "sonu 44 17 ile biten IBAN" denir.
+        """
+        digits = re.sub(r"\D", "", masked_iban or "")
+        if len(digits) < 2:
+            return "kayıtlı IBAN"
+        tail = digits[-4:] if len(digits) >= 4 else digits
+        spaced = " ".join(tail[i:i + 2] for i in range(0, len(tail), 2))
+        return f"sonu {spaced} ile biten IBAN"
+
     # ---------------------------------------------------------- call context
 
     def set_call_context(self, user_id: str, merchant_id: str,
@@ -437,6 +451,23 @@ class AgentOrchestrator:
         )
         return cleaned
 
+    def _make_speech_friendly(self, text: str) -> str:
+        """Son guvenlik agi: LLM kurallara ragmen sese uygun olmayan bir sey
+        yazdiysa (maskeli IBAN, % isareti, ciplak URL) konusma diline cevir."""
+        cleaned = text
+        # "%1,99" / "% 2,49" -> "yüzde 1,99"
+        cleaned = re.sub(r"%\s*(\d)", r"yüzde \1", cleaned)
+        # Maskeli IBAN blogu -> "sonu XX YY ile biten IBAN" (son rakamda biter,
+        # kuyruktaki boslugu yutmaz)
+        def _iban_repl(match: re.Match) -> str:
+            return self._speakable_iban(match.group(0))
+        cleaned = re.sub(r"TR[*\d][*\d ]{9,}\d", _iban_repl, cleaned)
+        # Maskeli kart: "(kart) **** 4832" -> "4832 ile biten kart"
+        cleaned = re.sub(r"(?:kart[ıi]?\s+)?\*{2,}[\s*]*(\d{4})", r"\1 ile biten kart", cleaned)
+        # Ciplak URL -> okunmaz, SMS'e referans verilir
+        cleaned = re.sub(r"https?://\S+", "telefonunuza SMS ile gönderilen link", cleaned)
+        return cleaned
+
     # --- Agentic musteri karti (hafizayi router LLM yonetir; kelime bazli cikarim yok) --
     def _merge_router_card(self, user_profile: Dict[str, Any], router_decision: Dict[str, Any]) -> None:
         """Router LLM'in ayni cagrida urettigi 'card' alanini profile'a alir.
@@ -641,15 +672,16 @@ class AgentOrchestrator:
             gross = self._format_try_amount(settlement.get("gross_try", 0))
             commission = self._format_try_amount(settlement.get("commission_try", 0))
             status = settlement.get("status")
+            speak_iban = self._speakable_iban(settlement.get("iban_masked", ""))
             if status == "ödendi":
                 response_builder.add_fact(
                     f"{batch_day} tarihli satışların hakedişi ödendi: brüt {gross}, "
-                    f"komisyon {commission}, net {net} ({settlement.get('iban_masked')})."
+                    f"komisyon {commission}, net {net} ({speak_iban} hesabınıza)."
                 )
             elif status == "planlandı":
                 response_builder.add_fact(
                     f"{batch_day} tarihli satışların hakedişi: brüt {gross}, komisyon {commission}, "
-                    f"net {net}. Ödeme {day} saat {time}'de {settlement.get('iban_masked')} hesabına planlandı."
+                    f"net {net}. Ödeme {day} saat {time}'de {speak_iban} hesabınıza planlandı."
                 )
             else:  # beklemede
                 note = settlement.get("note") or "banka tarafında doğrulama bekleniyor"
@@ -681,7 +713,7 @@ class AgentOrchestrator:
             time = self._time_of(txn.get("timestamp", ""))
             response_builder.add_fact(
                 f"İşlem bulundu: {self._format_try_amount(txn.get('amount_try', 0))}, {day} saat {time}, "
-                f"kart **** {txn.get('card_last4')}, durum: {txn.get('status')}."
+                f"{txn.get('card_last4')} ile biten kart, durum: {txn.get('status')}."
             )
             settlement = self.merchant_data.get_settlement_for_transaction(txn)
             if settlement:
@@ -848,9 +880,12 @@ class AgentOrchestrator:
             f" ({self._format_try_amount(link['amount_try'])} tutarında)"
             if link.get("amount_try") else " (tutar serbest)"
         )
+        # URL sesli okunmaz: linkin kendisi context'te durur (panel/transkript
+        # gosterir), konusmada yalnizca SMS ile gonderildigi soylenir.
         response_builder.add_fact(
-            f"Ödeme linki oluşturuldu{amount_note}: {link['url']} — telefonuna SMS ile de gönderildi. "
-            "Müşterileri bu linkten kartla ödeyebilir, tutarlar hakedişe dahil olur."
+            f"Ödeme linki oluşturuldu{amount_note} ve telefonuna SMS ile gönderildi. "
+            "Müşterileri bu linkten kartla ödeyebilir, tutarlar hakedişe dahil olur. "
+            "Linkin adresini SESLİ OKUMA; SMS'e geldiğini söyle."
         )
         payload = {"url": link["url"], "amount_try": link.get("amount_try")}
         pending = user_profile.get("pending_offer") or {}
@@ -1120,6 +1155,8 @@ class AgentOrchestrator:
 
         final_response = self._remove_redundant_greeting(final_response, is_first_turn)
         final_response = self._normalize_currency_language(final_response)
+        if channel == "voice":
+            final_response = self._make_speech_friendly(final_response)
         final_response = self._prepend_resume_summary(final_response, user_profile, channel, is_first_turn)
 
         current_history.append({"role": "agent", "text": final_response})

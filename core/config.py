@@ -57,6 +57,10 @@ class Config:
             'VOICE_OUTPUT_DIR',
             os.path.join(self.base_dir, 'voice_output'),
         )
+        # Goreli yol Flask'ta app klasorune gore cozulur ve ses dosyalari 404
+        # olur; her zaman proje kokune gore mutlaklastir.
+        if not os.path.isabs(self.voice_output_dir):
+            self.voice_output_dir = os.path.join(self.base_dir, self.voice_output_dir)
 
         self.elevenlabs_api_key = os.getenv('ELEVENLABS_API_KEY', '')
         self.elevenlabs_voice_id = os.getenv('ELEVENLABS_VOICE_ID', '')
