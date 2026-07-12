@@ -27,6 +27,9 @@ body {
   min-height: 100vh;
   transition: grid-template-columns 160ms ease;
 }
+.layout > .content {
+  min-width: 0;
+}
 
 /* Daraltılmış menü: yalnız ikonlar, 72px */
 html.sidebar-collapsed .layout {
@@ -176,7 +179,10 @@ html.sidebar-collapsed .brand::before {
 }
 
 html.presentation-mode .layout {
-  grid-template-columns: 0 1fr;
+  grid-template-columns: 1fr;
+}
+html.presentation-mode .content {
+  grid-column: 1 / -1;
 }
 
 html.presentation-mode .sidebar,
@@ -3850,3 +3856,25 @@ body[data-stock-mode="demand"] .unit-cell.sold { background: #dfe4e9; color: #64
 }
 
 .sidebar-footer { border-top: 1px solid rgba(255, 255, 255, 0.08); }
+
+
+/* ---- Dikdortgen olcek: kurumsal koseler (oval fazlaligi kaldirildi) ---- */
+.stat-card, .chart-card, .notes-card, .briefing-card, .inventory-band,
+.conversation-card, .turn-card, .table-wrap, .edit-form, .empty-state,
+.user-group-card, .lead-group, .lp-panel {
+  border-radius: 10px;
+}
+.button, .present-exit {
+  border-radius: 7px;
+}
+input[type="text"], input[type="date"], input[type="datetime-local"],
+select, textarea {
+  border-radius: 7px !important;
+}
+.nav a { border-radius: 6px; }
+.filter-chip, .channel-tab, .meta-pill, .channel-pill, .temp-badge,
+.lead-chip, .status-pill, .task-priority, .pressure-pill, .nav-badge,
+.stage-history-item, .handoff-flag {
+  border-radius: 5px;
+}
+.note-chip { border-radius: 8px; }
