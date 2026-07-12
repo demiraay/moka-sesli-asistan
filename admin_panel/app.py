@@ -334,7 +334,7 @@ def create_app(
                 flash("Geçerli bir numara/kimlik girin.", "error")
             else:
                 admin_store.add_to_blocklist(user_id, note)
-                flash(f"{user_id} istisna listesine eklendi — AI artik bu numarayla konusmayacak.", "success")
+                flash(f"{user_id} istisna listesine eklendi — AI artık bu numarayla konuşmayacak.", "success")
             return redirect(url_for("exceptions"))
 
         return render_template(
@@ -345,7 +345,7 @@ def create_app(
     @app.post("/admin/exceptions/<path:user_id>/remove")
     def remove_exception(user_id: str):
         admin_store.remove_from_blocklist(user_id)
-        flash(f"{user_id} istisna listesinden cikarildi.", "success")
+        flash(f"{user_id} istisna listesinden çıkarıldı.", "success")
         return redirect(url_for("exceptions"))
 
     @app.route("/admin/leads")

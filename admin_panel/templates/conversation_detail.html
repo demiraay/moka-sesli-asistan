@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Konuşma Detayi{% endblock %}
+{% block title %}Konuşma Detayı — {{ panel_project }}{% endblock %}
 
 {% block content %}
   <div class="page-header">
@@ -14,7 +14,7 @@
   <section class="notes-card">
     <div class="notes-header">
       <div>
-        <h2>Yapay Zeka Notlari</h2>
+        <h2>Yapay Zekâ Notları</h2>
         <p>Kullanıcı: {{ session.user_id }}</p>
       </div>
       <small>{{ ai_notes.updated_at or "Henüz güncellenmedi" }}</small>
