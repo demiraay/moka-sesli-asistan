@@ -61,6 +61,28 @@ html.sidebar-collapsed .sidebar-toggle svg {
   transform: rotate(180deg);
 }
 
+/* Daraltilmis modda tasan her sey gizlenir: rozetler, grup yazilari zaten
+   cizgiye donusur; ikonlar 40px kutuda tam ortalanir. */
+html.sidebar-collapsed .nav-badge {
+  display: none;
+}
+html.sidebar-collapsed .nav a {
+  width: 44px;
+  height: 42px;
+  margin: 0 auto;
+  padding: 0;
+  justify-content: center;
+}
+html.sidebar-collapsed .nav a.active {
+  box-shadow: inset 0 0 0 1.5px rgba(0, 210, 100, 0.5);
+}
+html.sidebar-collapsed .brand {
+  justify-content: center;
+}
+html.sidebar-collapsed .brand::before {
+  margin: 0;
+}
+
 .sidebar {
   padding: 28px 20px;
   background: var(--navy);
@@ -168,16 +190,16 @@ html.presentation-mode .present-exit {
 
 .nav {
   display: grid;
-  gap: 10px;
+  gap: 3px;
 }
 
 .nav-group-label {
-  margin: 14px 4px 0;
-  font-size: 0.68rem;
+  margin: 18px 10px 4px;
+  font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(219, 234, 254, 0.5);
+  color: rgba(219, 234, 254, 0.38);
 }
 
 .nav-group-label:first-child {
@@ -223,17 +245,18 @@ html.sidebar-collapsed .nav-group-label:first-child {
 .nav a {
   display: flex;
   align-items: center;
-  gap: 12px;
-  color: #dbeafe;
+  gap: 11px;
+  color: rgba(219, 234, 254, 0.78);
   text-decoration: none;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 0.92rem;
   transition: background 120ms ease, color 120ms ease;
 }
 
 .nav a:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.07);
   color: #fff;
 }
 
@@ -243,9 +266,10 @@ html.sidebar-collapsed .nav-group-label:first-child {
 }
 
 .nav a.active {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(0, 210, 100, 0.12);
   color: #fff;
-  box-shadow: inset 3px 0 0 #00d264;
+  box-shadow: inset 2.5px 0 0 #00d264;
+  font-weight: 600;
 }
 
 .nav a {
@@ -3804,3 +3828,25 @@ body[data-stock-mode="demand"] .unit-cell.sold { background: #dfe4e9; color: #64
 
 /* Hakem bulgusu #4: .lead-row gibi display'li ogelerde hidden calismiyordu. */
 [hidden] { display: none !important; }
+
+
+/* ---- Kart duzeni cilasi: tutarli yukseklik, sakin golge ---- */
+.stat-card {
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16, 35, 63, 0.05), 0 8px 24px rgba(16, 35, 63, 0.05);
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.stat-card span { margin-bottom: 0; }
+.stat-card strong { font-size: 1.85rem; line-height: 1.1; }
+.stat-card .trend { margin-top: auto; }
+
+.chart-card, .notes-card, .briefing-card, .inventory-band {
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16, 35, 63, 0.05), 0 8px 24px rgba(16, 35, 63, 0.05);
+}
+
+.sidebar-footer { border-top: 1px solid rgba(255, 255, 255, 0.08); }
