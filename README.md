@@ -2,6 +2,8 @@
 
 **Ödeme kuruluşlarının işletme müşterileri için konuşma tabanlı yapay zekâ destek hattı.**
 
+> Kapsamlı teknik rapor için bkz. [docs/TEKNIK_RAPOR.md](docs/TEKNIK_RAPOR.md).
+
 Moka Sesli Asistan (kod adı *Ada*), üye işyerlerinin telefonla ilettiği hakediş,
 işlem, cihaz ve komisyon sorularını doğal Türkçe diyalog içinde, gerçek işlem
 verisine dayanarak yanıtlayan; çözümün ardından satış fırsatlarını değerlendiren
