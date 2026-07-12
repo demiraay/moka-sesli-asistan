@@ -47,10 +47,16 @@ class TestVoice(unittest.TestCase):
                 "segments": [{"id": 0}],
             }
 
+            # whisper importu artik tembel (torch maliyeti); sahte modulu
+            # sys.modules'e enjekte ederek lazy import'u yakaliyoruz.
+            fake_whisper = MagicMock()
+            fake_whisper.load_model.return_value = model
             with patch("core.voice.shutil.which", return_value="/usr/bin/ffmpeg"):
-                with patch("core.voice.whisper.load_model", return_value=model) as load_model:
+                with patch.dict(sys.modules, {"whisper": fake_whisper}):
+                    WhisperTranscriber._loaded_models.clear()
                     transcriber = WhisperTranscriber()
                     result = transcriber.transcribe(str(audio_path))
+            load_model = fake_whisper.load_model
 
             load_model.assert_called_once_with("large", device="cpu")
             model.transcribe.assert_called_once_with(str(audio_path), language="tr", fp16=False)

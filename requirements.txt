@@ -1,15 +1,12 @@
-# Voice Agent - Python bagimliliklari
+# Moka Sesli Asistan - Python bagimliliklari
 # Kurulum: pip install -r requirements.txt
-# Not: openai-whisper icin sistemde ffmpeg kurulu olmali (macOS: brew install ffmpeg)
 
-# Web katmani (admin paneli + WhatsApp koprusu)
+# Web katmani (admin paneli + call API + WhatsApp koprusu)
 Flask>=3.0
-
-# .env yapilandirmasi
 python-dotenv>=1.0
 
-# Ses -> metin (STT). Torch'u da beraberinde kurar, indirme buyuktur.
-openai-whisper>=20231117
-
-# --- Gelistirme / test ---
+# Testler
 pytest>=8.0
+
+# OPSIYONEL - lokal STT fallback (GROQ_API_KEY yoksa kullanilir; ffmpeg gerekir):
+#   pip install openai-whisper
