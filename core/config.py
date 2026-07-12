@@ -102,6 +102,9 @@ class Config:
         self.support_kb = self._load_json_file('support_kb.json', [])
         self.rules = self._load_json_file('rules.json', {})
         self.handoff_rules = self._load_json_file('handoff_rules.json', {})
+        # Ham JSON yeniden yuklendi: D-1/D+1 tarih token'lari tekrar cozulmeli
+        # (MerchantDataManager bir sonraki kurulumda yeniden cevirir).
+        self._date_tokens_resolved = False
 
     def _load_json_file(self, filename: str, default: Any) -> Any:
         file_path = os.path.join(self.data_dir, filename)

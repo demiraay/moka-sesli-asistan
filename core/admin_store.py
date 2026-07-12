@@ -666,7 +666,7 @@ class AdminStore:
 
     # --- Lead yonetimi -------------------------------------------------------
 
-    LEAD_STAGES = ("new", "qualified", "appointment", "visited", "reserved", "won", "lost")
+    LEAD_STAGES = ("new", "support", "offer", "won", "lost")
 
     # Panel ici test sohbetinin kimligi; lead listelerinde gorunmesin.
     INTERNAL_USER_IDS = ("panel-test",)
@@ -726,14 +726,14 @@ class AdminStore:
     def _suggest_stage(self, notes: Dict[str, Any], current_stage: str) -> Optional[str]:
         """AI notlarina bakarak bir sonraki asama onerisi; yalnizca erken
         asamalarda oneri yapar, danismanin manuel kararini ezmez."""
-        if current_stage not in ("new", "qualified"):
+        if current_stage not in ("new", "support"):
             return None
 
         suggestion = None
-        if notes.get("handoff_required"):
-            suggestion = "appointment"
-        elif notes.get("budget_max_try") and notes.get("preferred_flat_type"):
-            suggestion = "qualified"
+        if notes.get("pending_offer"):
+            suggestion = "offer"
+        elif notes.get("issue") or notes.get("current_intents"):
+            suggestion = "support"
 
         if suggestion and self.LEAD_STAGES.index(suggestion) > self.LEAD_STAGES.index(current_stage):
             return suggestion
@@ -1621,7 +1621,7 @@ class AdminStore:
             )
         self.update_listing_status(inventory_id, "reserved", source="option")
         self._record_lead_event(user_id, "option_placed", {"inventory_id": inventory_id, "hours": hours})
-        self._bump_lead_stage(user_id, "reserved")
+        self._bump_lead_stage(user_id, "offer")
 
     def place_deposit(self, inventory_id: str, user_id: str = "", amount_try: Optional[int] = None, note: str = "") -> None:
         """Kapora kaydi; opsiyonlu uniteyi kaporaya cevirebilir."""
@@ -1644,7 +1644,7 @@ class AdminStore:
         if listing.get("status") != "reserved":
             self.update_listing_status(inventory_id, "reserved", source="deposit")
         self._record_lead_event(user_id, "deposit_placed", {"inventory_id": inventory_id, "amount_try": amount_try})
-        self._bump_lead_stage(user_id, "reserved")
+        self._bump_lead_stage(user_id, "offer")
 
     def release_reservation(self, inventory_id: str, note: str = "") -> None:
         """Opsiyon/kaporayi iptal edip uniteyi satisa geri alir."""
@@ -2375,11 +2375,9 @@ class AdminStore:
 
     STAGE_LABELS_TR = {
         "new": "Yeni",
-        "qualified": "Nitelikli",
-        "appointment": "Randevu",
-        "visited": "Gösterim",
-        "reserved": "Opsiyon/Kapora",
-        "won": "Satış",
+        "support": "Destekte",
+        "offer": "Teklif Sunuldu",
+        "won": "Kazanıldı",
         "lost": "Kayıp",
     }
 

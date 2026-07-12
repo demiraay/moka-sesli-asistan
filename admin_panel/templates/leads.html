@@ -1,15 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Müşteri Adayları — {{ panel_project }}{% endblock %}
+{% block title %}Handoff Kuyruğu — {{ panel_project }}{% endblock %}
 
 {% set STAGE_LABELS = {
   "new": "Yeni",
-  "qualified": "Nitelikli",
-  "appointment": "Randevu",
-  "visited": "Gösterim",
-  "reserved": "Opsiyon/Kapora",
-  "won": "Satış",
-  "lost": "Kayip"
+  "support": "Destekte",
+  "offer": "Teklif Sunuldu",
+  "won": "Kazanıldı",
+  "lost": "Kayıp"
 } %}
 
 {% macro temp_label(t) %}{{ 'SICAK' if t == 'hot' else ('ILIK' if t == 'warm' else 'SOĞUK') }}{% endmacro %}

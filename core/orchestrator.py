@@ -111,7 +111,14 @@ class AgentOrchestrator:
             merchant_id = DEFAULT_DEMO_MERCHANT_ID
 
         user_profile["merchant_id"] = merchant_id
-        return self.merchant_data.get_merchant(merchant_id)
+        merchant = self.merchant_data.get_merchant(merchant_id)
+        if merchant:
+            # Panel listeleri (handoff kuyrugu, konusmalar) "call-xxxx" yerine
+            # gercek musteri adini gostersin.
+            user_profile["merchant_display"] = (
+                f"{merchant.get('owner_name')} — {merchant.get('business_name')}"
+            )
+        return merchant
 
     def _call_mode(self, user_id: str) -> str:
         return (self.call_contexts.get(user_id) or {}).get("mode", "inbound")
@@ -321,6 +328,7 @@ class AgentOrchestrator:
 
         ai_notes = {
             "last_user_message": user_input,
+            "name": user_profile.get("merchant_display"),
             "merchant_id": user_profile.get("merchant_id"),
             "issue": card.get("issue"),
             "mood": card.get("mood"),
@@ -1265,6 +1273,17 @@ class AgentOrchestrator:
                 router_decision={"tool": "call_start", "args": {"mode": mode}},
                 context=ResponseBuilder().build(),
             )
+            # Cagri baslar baslamaz panelde musteri adiyla gorunsun.
+            if merchant:
+                self.admin_store.save_user_ai_notes(
+                    user_id=user_id,
+                    ai_summary=("Giden kurtarma aramasi basladi." if mode == "outbound"
+                                else "Gelen cagri karsilandi."),
+                    ai_notes={
+                        "name": user_profile.get("merchant_display"),
+                        "merchant_id": merchant.get("merchant_id"),
+                    },
+                )
         except Exception as error:
             print(f"AdminStore log warning: {error}")
 
