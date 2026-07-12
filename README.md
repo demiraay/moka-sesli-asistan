@@ -1,8 +1,39 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/hero-light.svg">
+  <img alt="Moka Sesli Asistan — Ada" src="assets/hero-dark.svg" width="100%">
+</picture>
+
+<div align="center">
+
 # Moka Sesli Asistan
 
-**Ödeme kuruluşlarının işletme müşterileri için konuşma tabanlı yapay zekâ destek hattı.**
+**Ödeme kuruluşlarının işletme müşterileri için konuşma tabanlı, gelir odaklı yapay zekâ destek hattı**
 
-> Kapsamlı teknik rapor için bkz. [docs/TEKNIK_RAPOR.md](docs/TEKNIK_RAPOR.md).
+<img src="https://img.shields.io/badge/testler-94%2F94-16a34a?style=flat-square" alt="Testler">
+<img src="https://img.shields.io/badge/senaryo-7%2F7-16a34a?style=flat-square" alt="Senaryolar">
+<img src="https://img.shields.io/badge/yan%C4%B1t%20turu-~2--3%20sn-2563eb?style=flat-square" alt="Gecikme">
+<img src="https://img.shields.io/badge/Python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python">
+<img src="https://img.shields.io/badge/dil-T%C3%BCrk%C3%A7e-dc2626?style=flat-square" alt="Dil">
+
+[Teknik Rapor](docs/TEKNIK_RAPOR.md) ·
+[Kurulum](#9-kurulum) ·
+[Örnek Senaryolar](#11-örnek-senaryolar) ·
+[Yol Haritası](#14-sınırlılıklar-ve-yol-haritası)
+
+</div>
+
+---
+
+## Bir Bakışta
+
+| | |
+| --- | --- |
+| **Ne yapar?** | Üye işyerlerinin hakediş, işlem, cihaz ve komisyon sorularını doğal Türkçe **sesli** diyalogda, gerçek işlem verisine dayanarak tek çağrıda çözer. |
+| **Neden farklı?** | Destek hattını maliyet merkezi olarak görmez: çözüm sonrası bağlama uygun teklif üretir, hacmi düşen işletmeleri **kendisi arar** ve kazanımı panele **"kurtarılan hacim ₺"** olarak işler. |
+| **Ne kadar hızlı?** | Uçtan uca yanıt turu (konuşma tanıma → iki model → ses sentezi) ortalama **2–3 saniye**; tuş yok, menü yok, bekleme müziği yok. |
+| **Ne kadar güvenilir?** | Tutar/tarih bilgileri yalnızca araç katmanından gelir (uydurma koruması); 94 otomatik test; her yanıtın veri kaynağı arayüzden izlenebilir. |
+| **Ekonomik bağlam** | Yapay zekâ ile yürütülen bir çağrı ~0,30–0,50 USD, insan temsilciyle 6–12 USD maliyetindedir; BFSI, sesli yapay zekâ pazarının en büyük dikeyidir (%32,9). Ayrıntılar için [teknik rapor](docs/TEKNIK_RAPOR.md). |
 
 Moka Sesli Asistan (kod adı *Ada*), üye işyerlerinin telefonla ilettiği hakediş,
 işlem, cihaz ve komisyon sorularını doğal Türkçe diyalog içinde, gerçek işlem
@@ -232,6 +263,21 @@ Gösterim öncesi veritabanını örnek kayıtlarla sıfırlamak için:
 ```bash
 .venv/bin/python scripts/reset_demo.py --seed
 ```
+
+## 11a. Kavram Doğrulama Bulguları
+
+Sistem, 18 üye işyerini temsil eden sentetik veri kümesi üzerinde **gerçek**
+konuşma tanıma, dil modeli ve ses sentezi servisleriyle uçtan uca
+değerlendirilmiştir (ayrıntılı yöntem ve tartışma için
+[teknik rapor, Bölüm 6](docs/TEKNIK_RAPOR.md)):
+
+| Ölçüt | Sonuç |
+| --- | --- |
+| Uçtan uca yanıt turu | Ortalama 2–3 sn (STT ~0,4 · yönlendirme ~0,6–1,0 · yanıt ~1,0–1,5 · sentez ~0,6–0,8) |
+| Senaryo başarımı | 7/7 — hedeflenen araç zinciri ve yan etkiler (servis kaydı, gelir olayı) doğrulandı |
+| Otomatik testler | 94/94 (veri katmanı, araç yönlendirme, çağrı API'si, kanal köprüsü, dil işleme) |
+| Güvenlik müdahalesi | Tam kart numarası okunma girişiminde sözün kesilmesi doğrulandı |
+| Geri kazanım (temsilî) | Tek proaktif aramada 143.333 TL/ay hacim, panele parasal işlendi |
 
 ## 11. Örnek Senaryolar
 
