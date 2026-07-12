@@ -1,8 +1,4 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="assets/hero-light.svg">
-  <img alt="Moka Sesli Asistan — Ada" src="assets/hero-dark.svg" width="100%">
-</picture>
+<img alt="Moka Sesli Asistan — sesli görüşme ekranı: müşterinin telefonu (canlı simülasyon), Ada ve canlı transkript" src="assets/screen-call.png" width="100%">
 
 <div align="center">
 
@@ -34,6 +30,10 @@
 | **Ne kadar hızlı?** | Uçtan uca yanıt turu (konuşma tanıma → iki model → ses sentezi) ortalama **2–3 saniye**; tuş yok, menü yok, bekleme müziği yok. |
 | **Ne kadar güvenilir?** | Tutar/tarih bilgileri yalnızca araç katmanından gelir (uydurma koruması); 94 otomatik test; her yanıtın veri kaynağı arayüzden izlenebilir. |
 | **Ekonomik bağlam** | Yapay zekâ ile yürütülen bir çağrı ~0,30–0,50 USD, insan temsilciyle 6–12 USD maliyetindedir; BFSI, sesli yapay zekâ pazarının en büyük dikeyidir (%32,9). Ayrıntılar için [teknik rapor](docs/TEKNIK_RAPOR.md). |
+
+<br>
+
+<img alt="Komuta Merkezi — operasyon ve gelir metrikleri: AI çözüm oranı, kurtarılan hacim, uyuyan işletmeler" src="assets/screen-admin.png" width="100%">
 
 Moka Sesli Asistan (kod adı *Ada*), üye işyerlerinin telefonla ilettiği hakediş,
 işlem, cihaz ve komisyon sorularını doğal Türkçe diyalog içinde, gerçek işlem
