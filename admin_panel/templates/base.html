@@ -50,26 +50,27 @@
           'messages': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
           'profile': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
           'block': '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
+          'phone': '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/>',
+          'moon': '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
         } %}
-        {# Alt sayfalar üst nav öğesine eşlenir: müşteri detayı lead çalışma ekranıdır,
-           teklifler stok panosundan açılır, oturum detayı Konuşmalar'a aittir.
-           Gruplar iş akışına göre sıralı: gün içi operasyon > envanter > araçlar. #}
+        {# Gruplar destek+gelir operasyonuna gore sirali: gun ici operasyon >
+           gelir motoru > araclar. Sesli Arama panel disinda /call'da yasar. #}
         {% set nav_groups = [
           ('Operasyon', [
-            ('dashboard', 'Panel', 'home', ('dashboard', 'generate_briefing_route')),
-            ('leads', 'Musteri Adaylari', 'users', ('leads', 'user_conversations')),
+            ('dashboard', 'Komuta Merkezi', 'home', ('dashboard', 'generate_briefing_route')),
+            ('leads', 'Handoff Kuyrugu', 'users', ('leads', 'user_conversations')),
             ('conversations', 'Konusmalar', 'messages', ('conversations', 'conversation_detail')),
             ('tasks', 'Gorevler', 'check', ('tasks',)),
-            ('exceptions', 'Istisnalar', 'block', ('exceptions', 'remove_exception')),
           ]),
-          ('Envanter', [
-            ('stock_board', 'Stok Panosu', 'grid', ('stock_board', 'new_offer', 'offer_detail')),
-            ('listings', 'Ilanlar', 'list', ('listings', 'edit_listing')),
+          ('Gelir', [
+            ('outbound', 'Uyuyan Isletmeler', 'moon', ('outbound',)),
           ]),
           ('Araclar', [
-            ('analytics', 'Analitik', 'chart', ('analytics',)),
+            ('call_page', 'Sesli Arama', 'phone', ('call_page',)),
             ('chat', 'Test Sohbeti', 'chat', ('chat',)),
-            ('sales_profile', 'Satis Profili', 'profile', ('sales_profile',)),
+            ('analytics', 'Analitik', 'chart', ('analytics',)),
+            ('sales_profile', 'Temsilci Profili', 'profile', ('sales_profile',)),
+            ('exceptions', 'Istisnalar', 'block', ('exceptions', 'remove_exception')),
           ]),
         ] %}
         {% set current = request.endpoint or '' %}

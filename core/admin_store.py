@@ -1204,6 +1204,64 @@ class AdminStore:
         """Public wrapper: orkestrator gelir olaylarini (odeme linki, teklif kabulu) buradan yazar."""
         self._record_lead_event(user_id, event_type, payload)
 
+    def get_revenue_kpis(self) -> Dict[str, Any]:
+        """Gelir panosu: AI'in urettigi somut para etkisi.
+
+        - recovered_volume_try: kabul edilen kurtarma tekliflerinin aylik hacmi
+        - offers_accepted / payment_links: gelir olayi sayaclari
+        - calls_today: bugun acilan sesli cagri oturumlari
+        - containment_pct: son 7 gunde insana devredilmeden cozulen oturum orani
+        """
+        recovered = 0
+        offers_accepted = 0
+        payment_links = 0
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT event_type, payload FROM lead_events "
+                "WHERE event_type IN ('offer_accepted', 'payment_link_created')"
+            ).fetchall()
+            for row in rows:
+                if row["event_type"] == "offer_accepted":
+                    offers_accepted += 1
+                    try:
+                        payload = json.loads(row["payload"] or "{}")
+                        recovered += int(payload.get("recovered_volume_try") or 0)
+                    except (ValueError, TypeError):
+                        pass
+                else:
+                    payment_links += 1
+
+            today = datetime.now().strftime("%Y-%m-%d")
+            calls_today = connection.execute(
+                "SELECT COUNT(*) AS c FROM conversation_sessions "
+                "WHERE channel = 'voice' AND created_at LIKE ?",
+                (f"{today}%",),
+            ).fetchone()["c"]
+
+            week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            sessions_week = connection.execute(
+                "SELECT COUNT(*) AS c FROM conversation_sessions WHERE created_at >= ?",
+                (week_ago,),
+            ).fetchone()["c"]
+            handoff_sessions_week = connection.execute(
+                "SELECT COUNT(DISTINCT session_id) AS c FROM conversation_turns "
+                "WHERE created_at >= ? AND context_json LIKE '%\"required\": true%'",
+                (week_ago,),
+            ).fetchone()["c"]
+
+        containment_pct = 100
+        if sessions_week:
+            containment_pct = round((1 - handoff_sessions_week / sessions_week) * 100)
+
+        return {
+            "recovered_volume_try": recovered,
+            "offers_accepted": offers_accepted,
+            "payment_links": payment_links,
+            "calls_today": calls_today,
+            "containment_pct": containment_pct,
+            "sessions_week": sessions_week,
+        }
+
     def _bump_lead_stage(self, user_id: str, stage: str) -> None:
         """Lead asamasini yalnizca ileri yonde tasir; manuel karari geri almaz."""
         if not user_id:

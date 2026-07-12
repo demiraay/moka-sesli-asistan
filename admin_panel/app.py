@@ -161,14 +161,29 @@ def create_app(
 
     @app.route("/admin")
     def dashboard():
+        dormant = active_orchestrator.merchant_data.list_dormant_merchants()
         return render_template(
             "dashboard.html",
-            stats=admin_store.get_dashboard_stats(),
             analytics=admin_store.get_dashboard_analytics(),
+            revenue=admin_store.get_revenue_kpis(),
+            dormant_count=len(dormant),
+            dormant_risk_try=sum(m.get("lost_volume_try", 0) for m in dormant),
             sales_profile=admin_store.get_sales_profile(),
             followups=admin_store.get_followup_tasks()[:4],
             open_tasks=admin_store.list_tasks()[:4],
             briefing=admin_store.get_latest_briefing(),
+        )
+
+    @app.route("/admin/outbound")
+    def outbound():
+        """Uyuyan isletmeler: hacmi dusen musteriler + tek tikla AI kurtarma aramasi."""
+        dormant = active_orchestrator.merchant_data.list_dormant_merchants()
+        # Son arama sonuclari: outbound cagri kayitlari lead_events'te call-id
+        # kullanicilarinda durur; basitce panelde gosterilmez (PoC kapsami disi).
+        return render_template(
+            "outbound.html",
+            dormant=dormant,
+            total_risk_try=sum(m.get("lost_volume_try", 0) for m in dormant),
         )
 
     @app.post("/admin/briefing/generate")

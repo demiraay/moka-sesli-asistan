@@ -5,56 +5,41 @@
 {% block content %}
   <div class="page-header">
     <h1>Komuta Merkezi</h1>
-    <p>Satis operasyonunun anlik gorunumu: lead akisi, talep ve stok.</p>
+    <p>Sesli destek hattinin anlik gorunumu: cagri akisi, cozum orani ve AI'in urettigi gelir.</p>
   </div>
 
   {% set kpis = analytics.kpis %}
   <section class="stats-grid">
     <article class="stat-card">
-      <span>Bugun yeni lead</span>
-      <strong>{{ kpis.new_leads_today }}</strong>
-    </article>
-    <article class="stat-card">
-      <span>Bu hafta yeni lead</span>
-      <strong>{{ kpis.new_leads_week }}</strong>
-      {% if kpis.lead_trend > 0 %}
-        <em class="trend up">▲ +{{ kpis.lead_trend }} gecen haftaya gore</em>
-      {% elif kpis.lead_trend < 0 %}
-        <em class="trend down">▼ {{ kpis.lead_trend }} gecen haftaya gore</em>
-      {% else %}
-        <em class="trend flat">— gecen haftayla ayni</em>
-      {% endif %}
+      <span>Bugunku sesli cagri</span>
+      <strong>{{ revenue.calls_today }}</strong>
     </article>
     <article class="stat-card">
       <span>Aktif konusma (24s)</span>
       <strong>{{ kpis.active_conversations }}</strong>
     </article>
     <article class="stat-card">
+      <span>AI cozum orani (7g)</span>
+      <strong>%{{ revenue.containment_pct }}</strong>
+      <em class="trend flat">insana devredilmeden cozulen</em>
+    </article>
+    <article class="stat-card">
       <span>Temsilciye devir (7g)</span>
       <strong>{{ kpis.handoff_week }}</strong>
     </article>
     <article class="stat-card highlight">
-      <span>Mesai disi yakalanan lead (7g)</span>
-      <strong>{{ kpis.out_of_hours_week }}</strong>
-      <em class="trend flat">AI olmasa kacacakti</em>
+      <span>Kurtarilan hacim (aylik)</span>
+      <strong>{{ revenue.recovered_volume_try | tl }}</strong>
+      <em class="trend up">{{ revenue.offers_accepted }} teklif kabul · {{ revenue.payment_links }} odeme linki</em>
     </article>
   </section>
 
   <section class="inventory-band">
-    {% set inv = analytics.inventory %}
     <div class="inventory-numbers">
-      <div><span class="dot available"></span> Satista <strong>{{ inv.available }}</strong></div>
-      <div><span class="dot reserved"></span> Rezerve <strong>{{ inv.reserved }}</strong></div>
-      <div><span class="dot sold"></span> Satildi <strong>{{ inv.sold }}</strong></div>
-      <div class="occupancy">Doluluk <strong>%{{ inv.occupancy_pct }}</strong></div>
+      <div><span class="dot reserved"></span> Uyuyan isletme <strong>{{ dormant_count }}</strong></div>
+      <div><span class="dot sold"></span> Risk altindaki aylik hacim <strong>{{ dormant_risk_try | tl }}</strong></div>
+      <div class="occupancy"><a class="button compact" href="{{ url_for('outbound') }}">Kurtarma aramalarina git →</a></div>
     </div>
-    {% if inv.total %}
-    <div class="inventory-bar">
-      <span class="seg sold" style="width: {{ (inv.sold / inv.total * 100) | round(1) }}%"></span>
-      <span class="seg reserved" style="width: {{ (inv.reserved / inv.total * 100) | round(1) }}%"></span>
-      <span class="seg available" style="width: {{ (inv.available / inv.total * 100) | round(1) }}%"></span>
-    </div>
-    {% endif %}
   </section>
 
   <section class="chart-grid">
@@ -67,21 +52,24 @@
       <div id="hour-chart" class="chart-slot"></div>
     </article>
     <article class="chart-card">
-      <h2>Tip bazli talep (AI notlari)</h2>
-      {% if analytics.demand_series %}
-        <div class="demand-list">
-          {% set max_demand = analytics.demand_series[0].count %}
-          {% for item in analytics.demand_series %}
-            <div class="demand-row">
-              <span class="demand-label">{{ item.label }}</span>
-              <span class="demand-bar"><i style="width: {{ (item.count / max_demand * 100) | round(1) }}%"></i></span>
-              <span class="demand-count">{{ item.count }}</span>
-            </div>
-          {% endfor %}
+      <h2>Gelir olaylari</h2>
+      <div class="demand-list">
+        <div class="demand-row">
+          <span class="demand-label">Teklif kabulu</span>
+          <span class="demand-bar"><i style="width: {{ (revenue.offers_accepted / ([revenue.offers_accepted + revenue.payment_links, 1] | max) * 100) | round(1) }}%"></i></span>
+          <span class="demand-count">{{ revenue.offers_accepted }}</span>
         </div>
-      {% else %}
-        <p class="empty-inline">Henuz talep verisi olusmadi.</p>
-      {% endif %}
+        <div class="demand-row">
+          <span class="demand-label">Odeme linki</span>
+          <span class="demand-bar"><i style="width: {{ (revenue.payment_links / ([revenue.offers_accepted + revenue.payment_links, 1] | max) * 100) | round(1) }}%"></i></span>
+          <span class="demand-count">{{ revenue.payment_links }}</span>
+        </div>
+        <div class="demand-row">
+          <span class="demand-label">Oturum (7g)</span>
+          <span class="demand-bar"><i style="width: 100%"></i></span>
+          <span class="demand-count">{{ revenue.sessions_week }}</span>
+        </div>
+      </div>
     </article>
   </section>
 
@@ -135,25 +123,24 @@
 
   <section class="dashboard-columns">
     <article class="chart-card">
-      <h2>Sicak lead'ler</h2>
+      <h2>Dikkat isteyen musteriler</h2>
       {% if analytics.hot_leads %}
         <div class="hot-lead-list">
           {% for lead in analytics.hot_leads %}
             <a class="hot-lead-row" href="{{ url_for('user_conversations', user_id=lead.user_id) }}">
-              <span class="temp-badge {{ lead.temperature }}">{{ 'SICAK' if lead.temperature == 'hot' else ('ILIK' if lead.temperature == 'warm' else 'SOGUK') }}</span>
+              <span class="temp-badge {{ lead.temperature }}">{{ 'ACIL' if lead.temperature == 'hot' else ('TAKIP' if lead.temperature == 'warm' else 'SAKIN') }}</span>
               <span class="hot-lead-main">
                 <strong>{{ lead.name or lead.user_id }}</strong>
                 <small>{{ lead.summary[:80] or '—' }}</small>
               </span>
               <span class="hot-lead-meta">
-                {% if lead.preferred_flat_type %}<em>{{ lead.preferred_flat_type }}</em>{% endif %}
                 {% if lead.handoff_required %}<em class="handoff-flag">devir bekliyor</em>{% endif %}
               </span>
             </a>
           {% endfor %}
         </div>
       {% else %}
-        <p class="empty-inline">Skorlanacak lead yok — konusmalar basladikca burasi dolacak.</p>
+        <p class="empty-inline">Su an dikkat isteyen musteri yok — cagrilar geldikce burasi dolacak.</p>
       {% endif %}
     </article>
 
@@ -178,15 +165,15 @@
   <section class="notes-card">
     <div class="notes-header">
       <div>
-        <h2>Satis Profili</h2>
-        <p>Handoff sirasinda kullanilan dinamik iletisim bilgileri.</p>
+        <h2>Nobetci Temsilci</h2>
+        <p>Handoff sirasinda cagri bu kisiye baglanir; bilgiler AI tarafindan asla uydurulamaz.</p>
       </div>
       <a class="button secondary" href="{{ url_for('sales_profile') }}">Duzenle</a>
     </div>
     {% if sales_profile.consultant_name or sales_profile.office_name or sales_profile.phone_number %}
       <div class="notes-grid">
         <article class="note-chip">
-          <span>Danisman</span>
+          <span>Temsilci</span>
           <strong>{{ sales_profile.consultant_name or "-" }}</strong>
         </article>
         <article class="note-chip">
@@ -194,7 +181,7 @@
           <strong>{{ sales_profile.consultant_title or "-" }}</strong>
         </article>
         <article class="note-chip">
-          <span>Ofis</span>
+          <span>Birim</span>
           <strong>{{ sales_profile.office_name or "-" }}</strong>
         </article>
         <article class="note-chip">
@@ -203,7 +190,7 @@
         </article>
       </div>
     {% else %}
-      <p class="empty-inline">Henuz satis profili tanimlanmadi.</p>
+      <p class="empty-inline">Henuz temsilci profili tanimlanmadi.</p>
     {% endif %}
   </section>
 

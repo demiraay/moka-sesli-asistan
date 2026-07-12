@@ -1,12 +1,13 @@
 :root {
-  --bg: #f3f1ea;
-  --panel: #fffdf8;
-  --ink: #1f2933;
-  --muted: #6b7280;
-  --line: #dfd8ca;
-  --accent: #284b63;
-  --accent-soft: #dce8ef;
-  --danger: #a63d40;
+  --bg: #f2f6f3;
+  --panel: #ffffff;
+  --ink: #10233f;
+  --muted: #64748b;
+  --line: #dbe4de;
+  --accent: #00a650;
+  --accent-soft: #d9f4e4;
+  --danger: #d64545;
+  --navy: #0b1f3a;
 }
 
 * {
@@ -16,7 +17,7 @@
 body {
   margin: 0;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
-  background: linear-gradient(180deg, #ebe6da 0%, #f7f4ed 100%);
+  background: linear-gradient(180deg, #e9f1ec 0%, #f6faf7 100%);
   color: var(--ink);
 }
 
@@ -62,7 +63,7 @@ html.sidebar-collapsed .sidebar-toggle svg {
 
 .sidebar {
   padding: 28px 20px;
-  background: #173042;
+  background: var(--navy);
   color: #f8fafc;
   position: sticky;
   top: 0;
@@ -140,7 +141,7 @@ html.sidebar-collapsed .sidebar-toggle svg {
   border: none;
   border-radius: 999px;
   padding: 10px 18px;
-  background: #173042;
+  background: var(--navy);
   color: #f8fafc;
   font: inherit;
   font-size: 0.85rem;
@@ -244,7 +245,7 @@ html.sidebar-collapsed .nav-group-label:first-child {
 .nav a.active {
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
-  box-shadow: inset 3px 0 0 #7fb3d5;
+  box-shadow: inset 3px 0 0 #00d264;
 }
 
 .nav a {
@@ -3675,7 +3676,7 @@ body[data-stock-mode="demand"] .unit-cell.sold { background: #dfe4e9; color: #64
     align-items: center;
     gap: 12px;
     padding: 10px 16px;
-    background: #173042;
+    background: var(--navy);
     color: #f8fafc;
     position: sticky;
     top: 0;
@@ -3725,3 +3726,29 @@ body[data-stock-mode="demand"] .unit-cell.sold { background: #dfe4e9; color: #64
     padding: 20px;
   }
 }
+
+
+/* ---- Uyuyan Isletmeler (outbound) ---- */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.data-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.data-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--accent-soft); }
+.sparkline { color: var(--danger); display: block; }

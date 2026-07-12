@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Uyuyan Isletmeler — {{ panel_project }}{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Uyuyan Isletmeler</h1>
+    <p>Islem hacmi ciddi dusen musteriler — sessizce kaybedilmeden once AI kurtarma aramasi yapin.</p>
+  </div>
+
+  <section class="stats-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 640px;">
+    <article class="stat-card">
+      <span>Uyuyan isletme</span>
+      <strong>{{ dormant | length }}</strong>
+    </article>
+    <article class="stat-card highlight">
+      <span>Risk altindaki aylik hacim</span>
+      <strong>{{ total_risk_try | tl }}</strong>
+      <em class="trend down">kurtarilmazsa kaybedilecek komisyon tabani</em>
+    </article>
+  </section>
+
+  {% if dormant %}
+  <section class="chart-card" style="margin-top: 18px;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Isletme</th>
+          <th>Sektor</th>
+          <th>Son 6 ay ciro</th>
+          <th>Dusus</th>
+          <th>Kayip hacim/ay</th>
+          <th>Cihaz durumu</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in dormant %}
+        <tr>
+          <td>
+            <strong>{{ m.business_name }}</strong>
+            <small style="display:block; color: var(--muted);">{{ m.owner_name }} · {{ m.merchant_id }}</small>
+          </td>
+          <td>{{ m.sector }}</td>
+          <td>
+            {# 6 aylik hacim sparkline'i — inline SVG polyline #}
+            {% set series = m.monthly_volume_try | map(attribute='volume') | list %}
+            {% set peak = (series | max) or 1 %}
+            <svg viewBox="0 0 120 32" width="120" height="32" class="sparkline">
+              {% set pts = [] %}
+              {% for v in series %}
+                {% set x = (loop.index0 / ([series | length - 1, 1] | max) * 112 + 4) | round(1) %}
+                {% set y = (28 - (v / peak * 24)) | round(1) %}
+                {% set _ = pts.append(x ~ ',' ~ y) %}
+              {% endfor %}
+              <polyline points="{{ pts | join(' ') }}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </td>
+          <td><span class="temp-badge hot">▼ %{{ m.drop_pct }}</span></td>
+          <td><strong>{{ m.lost_volume_try | tl }}</strong></td>
+          <td>
+            {% set device = m.devices[0] if m.devices else None %}
+            {% if device and device.note %}
+              <span class="handoff-flag">{{ device.note }}</span>
+            {% elif device %}
+              {{ device.status }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            <a class="button compact" target="_blank" rel="noopener"
+               href="/call?mode=outbound&merchant_id={{ m.merchant_id }}">📞 AI Ara</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% else %}
+    <p class="empty-inline" style="margin-top: 18px;">Su an uyuyan isletme yok — tum musterilerin hacmi saglikli.</p>
+  {% endif %}
+
+  <section class="notes-card" style="margin-top: 18px;">
+    <div class="notes-header">
+      <div>
+        <h2>Nasil calisir?</h2>
+      </div>
+    </div>
+    <p class="muted-line">
+      Sistem her isletmenin son ay cirosunu onceki 3 ayin ortalamasiyla kiyaslar; %70'ten fazla
+      dusus "uyuyan" sayilir. <strong>AI Ara</strong> dugmesi sesli asistani giden arama modunda baslatir:
+      Ada sebebi anlayisla ogrenir, teknik sorun varsa cozer, rakibe gecis varsa sadakat teklifini sunar.
+      Kabul edilen teklifler Komuta Merkezi'ndeki <strong>Kurtarilan Hacim</strong> sayacina islenir.
+    </p>
+  </section>
+{% endblock %}
