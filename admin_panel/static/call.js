@@ -552,4 +552,28 @@
   }
 
   setState("idle");
+
+  // Ekran goruntusu modu (?snapshot=1): gercek bir gorusmeyi statik olarak
+  // yeniden kurar — README/sunum gorselleri icin. Demo akisini etkilemez.
+  (function () {
+    if (new URLSearchParams(window.location.search).get("snapshot") !== "1") return;
+    el.setup.hidden = true;
+    el.controls.hidden = false;
+    el.merchantChip.hidden = false;
+    el.merchantLabel.textContent = "Demiray Kuruyemiş • M-1001";
+    el.timer.hidden = false;
+    el.timer.textContent = "00:41";
+    phoneSetTimer("00:41");
+    if (el.phoneScreen) el.phoneScreen.classList.add("in-call");
+    phoneShowCaption("Çok adım teşekkür ederim. İyi akşamlar.");
+    setState("listening");
+    el.stateLabel.textContent = "Sizi dinliyorum…";
+    addBubble("agent", "Moka'ya hoş geldiniz Mehmet Bey, ben Ada. Size nasıl yardımcı olabilirim?");
+    addBubble("user", "Merhaba Ada, nasılsın?");
+    addBubble("agent", "İyiyim, teşekkür ederim. Size nasıl yardımcı olabilirim?", { tool: "answer_general" });
+    addBubble("user", "Benim dün param yatmadığı nedenini öğrenebilir miyim?");
+    addBubble("agent", "Dünkü net hakedişiniz 44 bin 104 lira, yarın saat 10:00'de sonu 44 17 ile biten IBAN hesabınıza gönderilecek. Başka bir konuda yardımcı olabilir miyim?", { tool: "get_settlement_status" });
+    addBubble("user", "Çok adım teşekkür ederim. İyi akşamlar.");
+    addBubble("agent", "Rica ederim, iyi akşamlar.", { tool: "answer_general" });
+  })();
 })();
