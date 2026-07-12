@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Gorevler — {{ panel_project }}{% endblock %}
+{% block title %}Görevler — {{ panel_project }}{% endblock %}
 
 {% block content %}
   <div class="page-header">
-    <h1>Gorevler &amp; Takip</h1>
-    <p>Ust liste veriden otomatik uretilir; alta kendi gorevlerinizi ekleyebilirsiniz.</p>
+    <h1>Görevler &amp; Takip</h1>
+    <p>Ust liste veriden otomatik uretilir; alta kendi görevlerinizi ekleyebilirsiniz.</p>
   </div>
 
   <section class="chart-card" style="margin-bottom: 18px;">
@@ -20,7 +20,7 @@
               <small>{{ task.detail }}</small>
             </div>
             {% if task.user_id %}
-              <a class="button secondary compact" href="{{ url_for('user_conversations', user_id=task.user_id) }}">Musteri</a>
+              <a class="button secondary compact" href="{{ url_for('user_conversations', user_id=task.user_id) }}">Müşteri</a>
             {% endif %}
           </div>
         {% endfor %}
@@ -31,10 +31,10 @@
   </section>
 
   <section class="chart-card">
-    <h2>Manuel Gorevler</h2>
+    <h2>Manuel Görevler</h2>
     <form method="post" action="{{ url_for('tasks') }}" class="task-form">
-      <input type="text" name="title" placeholder="Gorev basligi (orn. B blok fiyat listesini guncelle)" required maxlength="200">
-      <input type="text" name="user_id" placeholder="Iliskili musteri (opsiyonel)">
+      <input type="text" name="title" placeholder="Görev basligi (orn. B blok fiyat listesini guncelle)" required maxlength="200">
+      <input type="text" name="user_id" placeholder="Iliskili müşteri (opsiyonel)">
       <input type="date" name="due_at">
       <button type="submit" class="button">Ekle</button>
     </form>
@@ -52,18 +52,18 @@
             <div class="task-main">
               <strong>{{ task.title }}</strong>
               <small>
-                {% if task.due_label %}<span class="{{ 'overdue-label' if task.overdue }}">Son gun: {{ task.due_label }}{{ ' — GECIKTI' if task.overdue }}</span>{% endif %}
+                {% if task.due_label %}<span class="{{ 'overdue-label' if task.overdue }}">Son gün: {{ task.due_label }}{{ ' — GECIKTI' if task.overdue }}</span>{% endif %}
                 {% if task.user_id %} · {{ task.user_id }}{% endif %}
               </small>
             </div>
             {% if task.user_id %}
-              <a class="button secondary compact" href="{{ url_for('user_conversations', user_id=task.user_id) }}">Musteri</a>
+              <a class="button secondary compact" href="{{ url_for('user_conversations', user_id=task.user_id) }}">Müşteri</a>
             {% endif %}
           </div>
         {% endfor %}
       </div>
     {% else %}
-      <p class="empty-inline" style="margin-top: 12px;">Henuz manuel gorev yok.</p>
+      <p class="empty-inline" style="margin-top: 12px;">Henuz manuel görev yok.</p>
     {% endif %}
   </section>
 {% endblock %}

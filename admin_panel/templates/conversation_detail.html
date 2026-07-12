@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Konusma Detayi{% endblock %}
+{% block title %}Konuşma Detayi{% endblock %}
 
 {% block content %}
   <div class="page-header">
-    <h1>Konusma Detayi</h1>
+    <h1>Konuşma Detayi</h1>
     <p>Oturum: {{ session.session_id }}</p>
     <div class="channel-pills">
       <span class="channel-pill {{ session.channel }}">{{ 'WhatsApp' if session.channel == 'whatsapp' else 'Demo' if session.channel == 'default' else session.channel }}</span>
@@ -15,7 +15,7 @@
     <div class="notes-header">
       <div>
         <h2>Yapay Zeka Notlari</h2>
-        <p>Kullanici: {{ session.user_id }}</p>
+        <p>Kullanıcı: {{ session.user_id }}</p>
       </div>
       <small>{{ ai_notes.updated_at or "Henuz guncellenmedi" }}</small>
     </div>
@@ -26,7 +26,7 @@
     {% for turn in turns %}
       <article class="turn-card">
         <div class="turn-meta">
-          <strong>Kullanici</strong>
+          <strong>Kullanıcı</strong>
           <span>{{ turn.created_at }}</span>
         </div>
         <div class="channel-pills">

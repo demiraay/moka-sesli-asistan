@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Konusmalar{% endblock %}
+{% block title %}Konuşmalar{% endblock %}
 
 {% block content %}
   <div class="page-header">
-    <h1>Konusma Gecmisi</h1>
-    <p>Burada sadece kullanici gruplari listelenir. Bir kullaniciya tiklayinca tum oturumlarini toplu halde gorebilirsiniz.</p>
+    <h1>Konuşma Geçmişi</h1>
+    <p>Burada sadece kullanıcı gruplari listelenir. Bir kullanıcıya tiklayinca tum oturumlarini toplu halde gorebilirsiniz.</p>
   </div>
 
   <div class="channel-tabs">
-    <a class="channel-tab {% if not filters.channel or filters.channel == 'all' %}active{% endif %}" href="{{ url_for('conversations', q=filters.query, date_from=filters.date_from, date_to=filters.date_to, handoff_only='1' if filters.handoff_only else '', price_only='1' if filters.price_only else '', flat_type=filters.flat_type, channel='all') }}">Tumu</a>
+    <a class="channel-tab {% if not filters.channel or filters.channel == 'all' %}active{% endif %}" href="{{ url_for('conversations', q=filters.query, date_from=filters.date_from, date_to=filters.date_to, handoff_only='1' if filters.handoff_only else '', price_only='1' if filters.price_only else '', flat_type=filters.flat_type, channel='all') }}">Tümü</a>
     <a class="channel-tab {% if filters.channel == 'whatsapp' %}active{% endif %}" href="{{ url_for('conversations', q=filters.query, date_from=filters.date_from, date_to=filters.date_to, handoff_only='1' if filters.handoff_only else '', price_only='1' if filters.price_only else '', flat_type=filters.flat_type, channel='whatsapp') }}">WhatsApp</a>
     <a class="channel-tab {% if filters.channel == 'default' %}active{% endif %}" href="{{ url_for('conversations', q=filters.query, date_from=filters.date_from, date_to=filters.date_to, handoff_only='1' if filters.handoff_only else '', price_only='1' if filters.price_only else '', flat_type=filters.flat_type, channel='default') }}">Demo</a>
   </div>
@@ -17,14 +17,14 @@
   <form class="filters-panel" method="get">
     <input type="hidden" name="channel" value="{{ filters.channel }}">
     <div class="filters-grid">
-      <input type="text" name="q" value="{{ filters.query }}" placeholder="Kelime ile tum kullanicilar arasinda ara">
+      <input type="text" name="q" value="{{ filters.query }}" placeholder="Kelime ile tum kullanıcılar arasinda ara">
       <input type="date" name="date_from" value="{{ filters.date_from }}">
       <input type="date" name="date_to" value="{{ filters.date_to }}">
       <input type="text" name="flat_type" value="{{ filters.flat_type }}" placeholder="Daire tipi: 2+1, 3+1, FT-2P1">
     </div>
     <div class="filters-row">
       <label><input type="checkbox" name="handoff_only" value="1" {% if filters.handoff_only %}checked{% endif %}> Sadece handoff olanlar</label>
-      <label><input type="checkbox" name="price_only" value="1" {% if filters.price_only %}checked{% endif %}> Sadece fiyat konusmalari</label>
+      <label><input type="checkbox" name="price_only" value="1" {% if filters.price_only %}checked{% endif %}> Sadece fiyat konuşmalari</label>
     </div>
     <div class="filters-actions">
       <button type="submit">Filtrele</button>
@@ -44,7 +44,7 @@
         </div>
         <div class="user-group-preview">
           <span>Son mesaj:</span>
-          <strong>{{ group.conversations[0].last_user_input or "Kayit yok" }}</strong>
+          <strong>{{ group.conversations[0].last_user_input or "Kayıt yok" }}</strong>
         </div>
         <div class="channel-pills">
           {% for item in group.conversations[:3] %}
@@ -53,7 +53,7 @@
         </div>
       </a>
     {% else %}
-      <div class="empty-state">Aramaniza uygun konusma bulunamadi.</div>
+      <div class="empty-state">Aramaniza uygun konuşma bulunamadı.</div>
     {% endfor %}
   </div>
 {% endblock %}

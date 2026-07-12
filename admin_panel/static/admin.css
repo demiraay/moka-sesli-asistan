@@ -3752,3 +3752,52 @@ body[data-stock-mode="demand"] .unit-cell.sold { background: #dfe4e9; color: #64
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tr:hover td { background: var(--accent-soft); }
 .sparkline { color: var(--danger); display: block; }
+
+/* ---- Profesyonel cila (Moka) ---- */
+.page-header h1 {
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.page-header p {
+  font-size: 0.95rem;
+}
+.stat-card span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 650;
+}
+.stat-card strong {
+  font-weight: 720;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.stat-card {
+  border-top: 3px solid transparent;
+}
+.stat-card.highlight {
+  border-top-color: var(--accent);
+  background: linear-gradient(180deg, #f2fcf6 0%, #ffffff 70%);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  background: #00d264;
+  box-shadow: 0 0 12px rgba(0, 210, 100, 0.55);
+  flex: none;
+}
+.nav-group-label {
+  letter-spacing: 0.12em;
+}
+.chart-card h2,
+.notes-card h2 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}

@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}Uyuyan Isletmeler — {{ panel_project }}{% endblock %}
+{% block title %}Uyuyan İşletmeler — {{ panel_project }}{% endblock %}
 
 {% block content %}
   <div class="page-header">
-    <h1>Uyuyan Isletmeler</h1>
-    <p>Islem hacmi ciddi dusen musteriler — sessizce kaybedilmeden once AI kurtarma aramasi yapin.</p>
+    <h1>Uyuyan İşletmeler</h1>
+    <p>İşlem hacmi ciddi düşen müşteriler — sessizce kaybedilmeden önce AI kurtarma araması yapın.</p>
   </div>
 
   <section class="stats-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 640px;">
     <article class="stat-card">
-      <span>Uyuyan isletme</span>
+      <span>Uyuyan işletme</span>
       <strong>{{ dormant | length }}</strong>
     </article>
     <article class="stat-card highlight">
-      <span>Risk altindaki aylik hacim</span>
+      <span>Risk altındaki aylık hacim</span>
       <strong>{{ total_risk_try | tl }}</strong>
-      <em class="trend down">kurtarilmazsa kaybedilecek komisyon tabani</em>
+      <em class="trend down">kurtarılmazsa kaybedilecek komisyon tabanı</em>
     </article>
   </section>
 
@@ -25,11 +25,11 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th>Isletme</th>
-          <th>Sektor</th>
+          <th>İşletme</th>
+          <th>Sektör</th>
           <th>Son 6 ay ciro</th>
-          <th>Dusus</th>
-          <th>Kayip hacim/ay</th>
+          <th>Düşüş</th>
+          <th>Kayıp hacim/ay</th>
           <th>Cihaz durumu</th>
           <th></th>
         </tr>
@@ -78,20 +78,20 @@
     </table>
   </section>
   {% else %}
-    <p class="empty-inline" style="margin-top: 18px;">Su an uyuyan isletme yok — tum musterilerin hacmi saglikli.</p>
+    <p class="empty-inline" style="margin-top: 18px;">Şu an uyuyan işletme yok — tüm müşterilerin hacmi sağlıklı.</p>
   {% endif %}
 
   <section class="notes-card" style="margin-top: 18px;">
     <div class="notes-header">
       <div>
-        <h2>Nasil calisir?</h2>
+        <h2>Nasıl çalışır?</h2>
       </div>
     </div>
     <p class="muted-line">
-      Sistem her isletmenin son ay cirosunu onceki 3 ayin ortalamasiyla kiyaslar; %70'ten fazla
-      dusus "uyuyan" sayilir. <strong>AI Ara</strong> dugmesi sesli asistani giden arama modunda baslatir:
-      Ada sebebi anlayisla ogrenir, teknik sorun varsa cozer, rakibe gecis varsa sadakat teklifini sunar.
-      Kabul edilen teklifler Komuta Merkezi'ndeki <strong>Kurtarilan Hacim</strong> sayacina islenir.
+      Sistem her işletmenin son ay cirosunu önceki 3 ayın ortalamasıyla kıyaslar; %70'ten fazla
+      düşüş "uyuyan" sayılır. <strong>AI Ara</strong> düğmesi sesli asistanı giden arama modunda başlatır:
+      Ada sebebi anlayışla öğrenir, teknik sorun varsa çözer, rakibe geçiş varsa sadakat teklifini sunar.
+      Kabul edilen teklifler Komuta Merkezi'ndeki <strong>Kurtarılan Hacim</strong> sayacına işlenir.
     </p>
   </section>
 {% endblock %}

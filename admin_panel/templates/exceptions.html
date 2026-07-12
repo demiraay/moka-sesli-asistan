@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Istisnalar — {{ panel_project }}{% endblock %}
+{% block title %}İstisnalar — {{ panel_project }}{% endblock %}
 
 {% block content %}
   <div class="page-header">
-    <h1>Istisnalar</h1>
-    <p>Bu listedeki numaralara yapay zeka <strong>asla</strong> yanit vermez. Mesajlari sessizce yok sayilir.</p>
+    <h1>İstisnalar</h1>
+    <p>Bu listedeki numaralara yapay zeka <strong>asla</strong> yanıt vermez. Mesajlari sessizce yok sayilir.</p>
   </div>
 
   <section class="exc-add-card">
@@ -20,7 +20,7 @@
         <input type="text" id="exc-note" name="note" autocomplete="off"
                placeholder="Or: rakip firma, spam, tanidik...">
       </div>
-      <button class="button" type="submit">Istisnaya ekle</button>
+      <button class="button" type="submit">İstisnaya ekle</button>
     </form>
   </section>
 
@@ -34,13 +34,13 @@
           </div>
           <span class="exc-date">{{ item.created_label }}</span>
           <form method="post" action="{{ url_for('remove_exception', user_id=item.user_id) }}"
-                onsubmit="return confirm('{{ item.user_id }} istisnadan cikarilsin mi? AI tekrar konusmaya baslar.');">
+                onsubmit="return confirm('{{ item.user_id }} istisnadan çıkarilsin mi? AI tekrar konuşmaya baslar.');">
             <button type="submit" class="button secondary compact">Kaldir</button>
           </form>
         </div>
       {% endfor %}
     </div>
   {% else %}
-    <div class="empty-state">Istisna listesi bos. Yukaridan numara ekleyerek AI'i belirli kisilerle susturabilirsiniz.</div>
+    <div class="empty-state">İstisna listesi bos. Yukaridan numara ekleyerek AI'i belirli kisilerle susturabilirsiniz.</div>
   {% endif %}
 {% endblock %}

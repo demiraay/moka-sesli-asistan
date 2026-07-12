@@ -1,28 +1,28 @@
 {% extends "base.html" %}
 
-{% block title %}Satis Profili{% endblock %}
+{% block title %}Satış Profili{% endblock %}
 
 {% block content %}
   <div class="page-header">
-    <h1>Satis Profili</h1>
-    <p>Handoff mesajlarinda ve WhatsApp yonlendirmelerinde kullanilacak ofis ve danisman bilgilerini yonetin.</p>
+    <h1>Satış Profili</h1>
+    <p>Handoff mesajlarinda ve WhatsApp yonlendirmelerinde kullanilacak ofis ve danışman bilgilerini yonetin.</p>
   </div>
 
   <form class="edit-form" method="post">
     <label>
-      Danisman adi
+      Danışman adi
       <input type="text" name="consultant_name" value="{{ sales_profile.consultant_name }}">
     </label>
     <label>
-      Danisman unvani
-      <input type="text" name="consultant_title" value="{{ sales_profile.consultant_title }}" placeholder="Satis danismani">
+      Danışman unvani
+      <input type="text" name="consultant_title" value="{{ sales_profile.consultant_title }}" placeholder="Satış danışmani">
     </label>
     <label>
-      Telefon numarasi
+      Telefon numarası
       <input type="text" name="phone_number" value="{{ sales_profile.phone_number }}">
     </label>
     <label>
-      WhatsApp numarasi
+      WhatsApp numarası
       <input type="text" name="whatsapp_number" value="{{ sales_profile.whatsapp_number }}">
     </label>
     <label>
@@ -31,7 +31,7 @@
     </label>
     <label>
       Konum etiketi
-      <input type="text" name="location_label" value="{{ sales_profile.location_label }}" placeholder="Ekinciler Residence Satis Ofisi">
+      <input type="text" name="location_label" value="{{ sales_profile.location_label }}" placeholder="Ekinciler Residence Satış Ofisi">
     </label>
     <label>
       Enlem

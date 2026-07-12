@@ -190,7 +190,7 @@ def create_app(
     def generate_briefing_route():
         try:
             generate_briefing(admin_store, active_orchestrator.llm_client)
-            flash("Gunun brifingi hazir.", "success")
+            flash("Günün brifingi hazır.", "success")
         except ValueError as error:
             flash(str(error), "error")
         return redirect(url_for("dashboard"))
@@ -205,7 +205,7 @@ def create_app(
                     due_at=request.form.get("due_at", "").strip() or None,
                 )
                 _invalidate_nav_badges()
-                flash("Gorev eklendi.", "success")
+                flash("Görev eklendi.", "success")
             except ValueError as error:
                 flash(str(error), "error")
             return redirect(url_for("tasks"))
@@ -223,7 +223,7 @@ def create_app(
             admin_store.set_task_done(task_id, done)
             _invalidate_nav_badges()
         except KeyError:
-            flash("Gorev bulunamadi.", "error")
+            flash("Görev bulunamadı.", "error")
         return redirect(url_for("tasks"))
 
     @app.route("/admin/listings")
@@ -326,7 +326,7 @@ def create_app(
         try:
             listing = admin_store.get_listing(inventory_id)
         except KeyError:
-            flash("Ilan bulunamadi.", "error")
+            flash("Kayıt bulunamadı.", "error")
             return redirect(url_for("listings"))
         block = next(
             (b for b in admin_store.get_block_options() if b["block_id"] == listing["block_id"]),
@@ -363,7 +363,7 @@ def create_app(
         if rejected:
             flash(f"{rejected} dosya reddedildi (yalniz JPG/PNG/WebP).", "error")
         if not saved and not rejected:
-            flash("Dosya secilmedi.", "error")
+            flash("Dosya seçilmedi.", "error")
         return redirect(redirect_target)
 
     @app.post("/admin/listings/<inventory_id>/photos")
@@ -371,7 +371,7 @@ def create_app(
         try:
             admin_store.get_listing(inventory_id)
         except KeyError:
-            flash("Ilan bulunamadi.", "error")
+            flash("Kayıt bulunamadı.", "error")
             return redirect(url_for("listings"))
         return _handle_photo_upload(
             "unit", inventory_id, url_for("listing_detail", inventory_id=inventory_id)
@@ -381,18 +381,18 @@ def create_app(
     def delete_listing_photo(inventory_id: str, photo_id: int):
         try:
             admin_store.delete_photo(photo_id)
-            flash("Fotograf silindi.", "success")
+            flash("Fotoğraf silindi.", "success")
         except KeyError:
-            flash("Fotograf bulunamadi.", "error")
+            flash("Fotoğraf bulunamadı.", "error")
         return redirect(url_for("listing_detail", inventory_id=inventory_id))
 
     @app.post("/admin/listings/<inventory_id>/photos/<int:photo_id>/cover")
     def set_listing_cover(inventory_id: str, photo_id: int):
         try:
             admin_store.set_cover_photo(photo_id)
-            flash("Kapak fotografi guncellendi.", "success")
+            flash("Kapak fotoğrafı güncellendi.", "success")
         except KeyError:
-            flash("Fotograf bulunamadi.", "error")
+            flash("Fotoğraf bulunamadı.", "error")
         return redirect(url_for("listing_detail", inventory_id=inventory_id))
 
     @app.route("/admin/flat-types/<flat_type_id>/photos", methods=["GET", "POST"])
@@ -402,7 +402,7 @@ def create_app(
             None,
         )
         if flat is None:
-            flash("Daire tipi bulunamadi.", "error")
+            flash("Kayıt bulunamadı.", "error")
             return redirect(url_for("listings"))
         if request.method == "POST":
             return _handle_photo_upload(
@@ -419,18 +419,18 @@ def create_app(
     def delete_flat_type_photo(flat_type_id: str, photo_id: int):
         try:
             admin_store.delete_photo(photo_id)
-            flash("Fotograf silindi.", "success")
+            flash("Fotoğraf silindi.", "success")
         except KeyError:
-            flash("Fotograf bulunamadi.", "error")
+            flash("Fotoğraf bulunamadı.", "error")
         return redirect(url_for("flat_type_photos", flat_type_id=flat_type_id))
 
     @app.post("/admin/flat-types/<flat_type_id>/photos/<int:photo_id>/cover")
     def set_flat_type_cover(flat_type_id: str, photo_id: int):
         try:
             admin_store.set_cover_photo(photo_id)
-            flash("Kapak fotografi guncellendi.", "success")
+            flash("Kapak fotoğrafı güncellendi.", "success")
         except KeyError:
-            flash("Fotograf bulunamadi.", "error")
+            flash("Fotoğraf bulunamadı.", "error")
         return redirect(url_for("flat_type_photos", flat_type_id=flat_type_id))
 
     @app.route("/admin/media/listings/<path:relpath>")
@@ -542,7 +542,7 @@ def create_app(
         try:
             listing = admin_store.get_listing(inventory_id)
         except KeyError:
-            flash("Teklif icin gecerli bir daire secin.", "error")
+            flash("Geçerli bir kayıt seçin.", "error")
             return redirect(url_for("stock_board"))
 
         plan = None
@@ -576,7 +576,7 @@ def create_app(
             offer = admin_store.get_offer(offer_id)
             listing = admin_store.get_listing(offer["inventory_id"])
         except KeyError:
-            flash("Teklif bulunamadi.", "error")
+            flash("Teklif bulunamadı.", "error")
             return redirect(url_for("stock_board"))
         return render_template(
             "offer_print.html",
@@ -669,7 +669,7 @@ def create_app(
         try:
             listing = admin_store.get_listing(inventory_id)
         except KeyError:
-            flash("Ilan bulunamadi.", "error")
+            flash("Kayıt bulunamadı.", "error")
             return redirect(url_for("listings"))
         block = next(
             (b for b in admin_store.get_block_options() if b["block_id"] == listing["block_id"]),
@@ -704,7 +704,7 @@ def create_app(
         # Kalici veri kaybina karsi metin onayi: ilan numarasi aynen yazilmali.
         confirm = request.form.get("confirm", "").strip()
         if confirm != inventory_id:
-            flash("Silme onayi eslesmedi. Ilan numarasini aynen yazin.", "error")
+            flash("Silme onayı eşleşmedi. Kayıt numarasını aynen yazın.", "error")
             return redirect(url_for("listing_detail", inventory_id=inventory_id))
         admin_store.delete_listing(inventory_id)
         flash(f"{inventory_id} silindi.", "success")
@@ -723,7 +723,7 @@ def create_app(
     def sales_profile():
         if request.method == "POST":
             admin_store.update_sales_profile(request.form.to_dict())
-            flash("Satis profili guncellendi.", "success")
+            flash("Temsilci profili güncellendi.", "success")
             return redirect(url_for("sales_profile"))
 
         return render_template(
@@ -741,7 +741,7 @@ def create_app(
             # Telefon gibi gorunuyorsa normalize et; degilse ( or. @lid kimligi) aynen al.
             user_id = normalize_phone_number(raw) if any(c.isdigit() for c in raw) else raw
             if not user_id:
-                flash("Gecerli bir numara/kimlik girin.", "error")
+                flash("Geçerli bir numara/kimlik girin.", "error")
             else:
                 admin_store.add_to_blocklist(user_id, note)
                 flash(f"{user_id} istisna listesine eklendi — AI artik bu numarayla konusmayacak.", "success")
@@ -789,7 +789,7 @@ def create_app(
 
         if request.is_json:
             return {"ok": True, "user_id": user_id, "stage": stage}
-        flash("Asama guncellendi.", "success")
+        flash("Aşama güncellendi.", "success")
         return redirect(url_for("user_conversations", user_id=user_id))
 
     @app.route("/admin/users/<path:user_id>/conversations")
@@ -821,7 +821,7 @@ def create_app(
     def toggle_ai_pause(user_id: str):
         paused = request.form.get("paused") == "1"
         admin_store.set_ai_paused(user_id, paused)
-        flash("AI duraklatildi — konusmayi siz yurutuyorsunuz." if paused else "AI tekrar devrede.", "success")
+        flash("AI duraklatıldı — konuşmayı siz yürütüyorsunuz." if paused else "AI tekrar devrede.", "success")
         return redirect(url_for("user_conversations", user_id=user_id))
 
     @app.post("/admin/users/<path:user_id>/send-message")
@@ -830,7 +830,7 @@ def create_app(
         try:
             admin_store.enqueue_outbound_message(user_id, message, sender="panel")
             admin_store.log_human_message(user_id, message)
-            flash("Mesaj kuyruga alindi; WhatsApp botu birkac saniye icinde gonderecek.", "success")
+            flash("Mesaj kuyruğa alındı; WhatsApp botu birkaç saniye içinde gönderecek.", "success")
         except ValueError as error:
             flash(str(error), "error")
         return redirect(url_for("user_conversations", user_id=user_id))

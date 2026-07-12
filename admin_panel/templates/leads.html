@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}Musteri Adaylari — {{ panel_project }}{% endblock %}
+{% block title %}Müşteri Adayları — {{ panel_project }}{% endblock %}
 
 {% set STAGE_LABELS = {
   "new": "Yeni",
   "qualified": "Nitelikli",
   "appointment": "Randevu",
-  "visited": "Gosterim",
+  "visited": "Gösterim",
   "reserved": "Opsiyon/Kapora",
-  "won": "Satis",
+  "won": "Satış",
   "lost": "Kayip"
 } %}
 
-{% macro temp_label(t) %}{{ 'SICAK' if t == 'hot' else ('ILIK' if t == 'warm' else 'SOGUK') }}{% endmacro %}
+{% macro temp_label(t) %}{{ 'SICAK' if t == 'hot' else ('ILIK' if t == 'warm' else 'SOĞUK') }}{% endmacro %}
 
 {% block content %}
   <div class="page-header">
-    <h1>Handoff Kuyrugu & Musteriler</h1>
-    <p>Insan bekleyen cagrilar (SLA sayacli) ve isletme kayitlari; detay icin bir musteriye tiklayin.</p>
+    <h1>Handoff Kuyruğu ve Müşteriler</h1>
+    <p>İnsan bekleyen çağrılar (SLA sayaçlı) ve işletme kayıtları; detay için bir müşteriye tıklayın.</p>
   </div>
 
   {% if handoff_queue %}
@@ -51,16 +51,16 @@
     <div class="lead-toolbar">
       <input type="text" id="lead-search" class="lead-search" autocomplete="off" placeholder="Isim / telefon ara...">
       <div class="lead-filter-chips" id="lead-stage-filter">
-        <button type="button" class="filter-chip active" data-stage="all">Tumu</button>
+        <button type="button" class="filter-chip active" data-stage="all">Tümü</button>
         {% for stage in stages %}
           <button type="button" class="filter-chip" data-stage="{{ stage }}">{{ STAGE_LABELS[stage] }}</button>
         {% endfor %}
       </div>
       <div class="lead-filter-chips" id="lead-temp-filter">
         <button type="button" class="filter-chip active" data-temp="all">Hepsi</button>
-        <button type="button" class="filter-chip" data-temp="hot">Sicak</button>
-        <button type="button" class="filter-chip" data-temp="warm">Ilik</button>
-        <button type="button" class="filter-chip" data-temp="cold">Soguk</button>
+        <button type="button" class="filter-chip" data-temp="hot">Sıcak</button>
+        <button type="button" class="filter-chip" data-temp="warm">Ilık</button>
+        <button type="button" class="filter-chip" data-temp="cold">Soğuk</button>
       </div>
       <span class="lead-count" id="lead-count"></span>
     </div>
@@ -115,13 +115,13 @@
               </button>
             {% endfor %}
           </div>
-          <p class="lead-group-empty">Bu asamada aday yok.</p>
+          <p class="lead-group-empty">Bu aşamada aday yok.</p>
         </section>
       {% endfor %}
       <p class="lead-no-result" id="lead-no-result" hidden>Aramaya/filtreye uyan aday yok.</p>
     </div>
   {% else %}
-    <div class="empty-state">Henuz lead yok — WhatsApp'tan ya da test sohbetinden konusmalar basladikca burasi dolacak.</div>
+    <div class="empty-state">Henuz lead yok — WhatsApp'tan ya da test sohbetinden konuşmalar basladikca burasi dolacak.</div>
   {% endif %}
 
   <div class="lead-panel-backdrop" id="lead-backdrop"></div>
@@ -141,7 +141,7 @@
     </div>
 
     <div class="lp-section" id="lp-summary-wrap" hidden>
-      <span class="lp-label">AI ozeti</span>
+      <span class="lp-label">AI özeti</span>
       <p id="lp-summary"></p>
     </div>
 
@@ -151,7 +151,7 @@
     </div>
 
     <div class="lp-section">
-      <span class="lp-label">Asama</span>
+      <span class="lp-label">Aşama</span>
       <div class="lp-stage-buttons" id="lp-stage-buttons"></div>
       <button type="button" class="suggestion-chip" id="lp-suggestion" hidden></button>
     </div>
@@ -167,8 +167,8 @@
     </div>
 
     <div class="lp-actions">
-      <a class="button" id="lp-open-conversation" href="#">Konusmayi ac</a>
-      <form method="post" id="lp-claim-form" hidden><button type="submit" class="button secondary">Devraldim</button></form>
+      <a class="button" id="lp-open-conversation" href="#">Konuşmayı ac</a>
+      <form method="post" id="lp-claim-form" hidden><button type="submit" class="button secondary">Devraldım</button></form>
     </div>
     <p class="chart-note" id="lp-feedback"></p>
   </aside>
@@ -176,7 +176,7 @@
 <script>
   const STAGE_LABELS = {{ STAGE_LABELS | tojson }};
   const STAGES = {{ stages | list | tojson }};
-  const TEMP_LABEL = { hot: "SICAK", warm: "ILIK", cold: "SOGUK" };
+  const TEMP_LABEL = { hot: "SICAK", warm: "ILIK", cold: "SOĞUK" };
 
   function tl(n) {
     return n ? new Intl.NumberFormat("tr-TR").format(n) + " TL" : "—";
@@ -275,7 +275,7 @@
     const factList = [
       ["Tip", lead.preferred_flat_type],
       ["Butce", lead.budget_max_try ? "≤ " + tl(lead.budget_max_try) : null],
-      ["Aciliyet", lead.urgency === "high" ? "Yuksek" : (lead.urgency === "low" ? "Dusuk" : lead.urgency)],
+      ["Aciliyet", lead.urgency === "high" ? "Yüksek" : (lead.urgency === "low" ? "Düşük" : lead.urgency)],
       ["Kanal", (lead.channels || []).filter(Boolean).join(", ")],
     ];
     factList.forEach(([label, value]) => {
@@ -356,7 +356,7 @@
       renderStageButtons(activeLead);
       const suggestion = document.getElementById("lp-suggestion");
       if (activeLead.suggested_stage === newStage) suggestion.hidden = true;
-      feedback.textContent = "Asama guncellendi.";
+      feedback.textContent = "Aşama güncellendi.";
     } catch (e) {
       feedback.textContent = "Sunucuya ulasilamadi.";
     }

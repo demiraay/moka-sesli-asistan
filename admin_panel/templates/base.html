@@ -10,15 +10,15 @@
   </head>
   <body>
     <header class="mobile-topbar">
-      <button type="button" class="topbar-nav-btn" id="nav-open" aria-label="Menuyu ac">
+      <button type="button" class="topbar-nav-btn" id="nav-open" aria-label="Menüyü aç">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
       </button>
       <span class="mobile-title">{{ panel_project }}</span>
     </header>
     <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
-    <button type="button" class="present-exit" id="present-exit" title="Sunum modundan cik (Esc)">
-      Sunum modundan cik
+    <button type="button" class="present-exit" id="present-exit" title="Sunum modundan çık (Esc)">
+      Sunum modundan çık
     </button>
     <div class="layout">
       <aside class="sidebar">
@@ -28,12 +28,12 @@
           </a>
           <div class="sidebar-top-actions">
             <button type="button" class="sidebar-toggle" id="present-btn"
-                    aria-label="Sunum modu" title="Sunum modu — menuyu gizle (Ctrl+Shift+P)">
+                    aria-label="Sunum modu" title="Sunum modu — menüyü gizle (Ctrl+Shift+P)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h20v12H2zM8 20h8M12 16v4"/></svg>
             </button>
             <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-expanded="true"
-                    aria-label="Menuyu daralt/genislet" title="Menuyu daralt/genislet (Ctrl+B)">
+                    aria-label="Menüyü daralt/genişlet" title="Menüyü daralt/genişlet (Ctrl+B)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
@@ -58,19 +58,19 @@
         {% set nav_groups = [
           ('Operasyon', [
             ('dashboard', 'Komuta Merkezi', 'home', ('dashboard', 'generate_briefing_route')),
-            ('leads', 'Handoff Kuyrugu', 'users', ('leads', 'user_conversations')),
-            ('conversations', 'Konusmalar', 'messages', ('conversations', 'conversation_detail')),
-            ('tasks', 'Gorevler', 'check', ('tasks',)),
+            ('leads', 'Handoff Kuyruğu', 'users', ('leads', 'user_conversations')),
+            ('conversations', 'Konuşmalar', 'messages', ('conversations', 'conversation_detail')),
+            ('tasks', 'Görevler', 'check', ('tasks',)),
           ]),
           ('Gelir', [
-            ('outbound', 'Uyuyan Isletmeler', 'moon', ('outbound',)),
+            ('outbound', 'Uyuyan İşletmeler', 'moon', ('outbound',)),
           ]),
-          ('Araclar', [
+          ('Araçlar', [
             ('call_page', 'Sesli Arama', 'phone', ('call_page',)),
             ('chat', 'Test Sohbeti', 'chat', ('chat',)),
             ('analytics', 'Analitik', 'chart', ('analytics',)),
             ('sales_profile', 'Temsilci Profili', 'profile', ('sales_profile',)),
-            ('exceptions', 'Istisnalar', 'block', ('exceptions', 'remove_exception')),
+            ('exceptions', 'İstisnalar', 'block', ('exceptions', 'remove_exception')),
           ]),
         ] %}
         {% set current = request.endpoint or '' %}
@@ -87,9 +87,9 @@
             <span class="nav-label">{{ label }}</span>
             {% if nav_badges is defined %}
               {% if endpoint == 'leads' and nav_badges.handoff %}
-                <span class="nav-badge danger" title="Insan bekleyen konusma">{{ nav_badges.handoff }}</span>
+                <span class="nav-badge danger" title="İnsan bekleyen konuşma">{{ nav_badges.handoff }}</span>
               {% elif endpoint == 'tasks' and nav_badges.tasks %}
-                <span class="nav-badge" title="Acik gorev">{{ nav_badges.tasks }}</span>
+                <span class="nav-badge" title="Açık görev">{{ nav_badges.tasks }}</span>
               {% endif %}
             {% endif %}
           </a>

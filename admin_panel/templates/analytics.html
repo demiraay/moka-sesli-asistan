@@ -5,19 +5,19 @@
 {% block content %}
   <div class="page-header">
     <h1>Analitik &amp; Raporlar</h1>
-    <p>Donusum hunisi, talep-stok baskisi ve AI performansi. Fiyatlama ve pazarlama kararlarinin veri kaynagi.</p>
+    <p>Dönüşüm hunisi, talep-stok baskisi ve AI performansı. Fiyatlama ve pazarlama kararlarinin veri kaynagi.</p>
   </div>
 
   <div class="section-toolbar">
     <div class="meta-pill">{{ report.total_leads }} lead · {{ report.ai_performance.total_sessions }} oturum</div>
     <div class="filters-actions">
       <a class="button secondary" href="{{ url_for('export_leads_csv') }}">Lead CSV indir</a>
-      <a class="button secondary" href="{{ url_for('export_conversations_csv') }}">Konusma CSV indir</a>
+      <a class="button secondary" href="{{ url_for('export_conversations_csv') }}">Konuşma CSV indir</a>
     </div>
   </div>
 
   <section class="chart-card" style="margin-bottom: 18px;">
-    <h2>Donusum Hunisi</h2>
+    <h2>Dönüşüm Hunisi</h2>
     {% if report.total_leads %}
       <div class="funnel">
         {% for step in report.funnel %}
@@ -43,7 +43,7 @@
   <section class="chart-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 18px;">
     <article class="chart-card">
       <h2>Tip Bazli Talep vs Stok</h2>
-      <p class="chart-note">Baski = talep / satistaki stok. Yuksek baski fiyat artisi sinyalidir.</p>
+      <p class="chart-note">Baski = talep / satıştaki stok. Yüksek baski fiyat artisi sinyalidir.</p>
       {% if report.demand_by_type %}
         <div class="table-wrap">
           <table>
@@ -71,7 +71,7 @@
 
     <article class="chart-card">
       <h2>Cephe Bazli Talep vs Stok</h2>
-      <p class="chart-note">Musterilerin istedigi cepheler ile eldeki stok karsilastirmasi.</p>
+      <p class="chart-note">Müşterilerin istedigi cepheler ile eldeki stok karsilastirmasi.</p>
       {% if report.demand_by_direction %}
         <div class="table-wrap">
           <table>
@@ -100,11 +100,11 @@
 
   <section class="chart-grid" style="grid-template-columns: 1fr 1fr;">
     <article class="chart-card">
-      <h2>AI Performansi</h2>
+      <h2>AI Performansı</h2>
       {% set perf = report.ai_performance %}
       <div class="notes-grid">
         <article class="note-chip"><span>AI tek basina cozdu</span><strong>%{{ perf.containment_pct }}</strong></article>
-        <article class="note-chip"><span>Insana devir orani</span><strong>%{{ perf.handoff_rate_pct }}</strong></article>
+        <article class="note-chip"><span>Insana devir oranı</span><strong>%{{ perf.handoff_rate_pct }}</strong></article>
         <article class="note-chip"><span>Toplam oturum</span><strong>{{ perf.total_sessions }}</strong></article>
         <article class="note-chip"><span>Ortalama tur/oturum</span><strong>{{ perf.avg_turns_per_session }}</strong></article>
       </div>
@@ -118,8 +118,8 @@
     </article>
 
     <article class="chart-card">
-      <h2>Arac Kullanimi (Router)</h2>
-      <p class="chart-note">AI'in hangi araci ne siklikta sectigi — davranis dengesinin gostergesi.</p>
+      <h2>Arac Kullanımı (Router)</h2>
+      <p class="chart-note">AI'in hangi araci ne siklikta sectigi — davranis dengesinin göstergesi.</p>
       {% if report.tool_usage %}
         <div class="demand-list">
           {% set max_tool = report.tool_usage[0].count %}
@@ -132,7 +132,7 @@
           {% endfor %}
         </div>
       {% else %}
-        <p class="empty-inline">Henuz konusma verisi yok.</p>
+        <p class="empty-inline">Henuz konuşma verisi yok.</p>
       {% endif %}
     </article>
   </section>
