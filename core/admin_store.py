@@ -975,7 +975,12 @@ class AdminStore:
 
 
     def _load_json(self, filename: str) -> Any:
-        return json.loads((self.data_dir / filename).read_text(encoding="utf-8"))
+        # Moka donusumunde kaldirilan eski emlak dosyalari (inventory/prices/...)
+        # icin bos liste don: ilan bazli sayfalar bos calisir, panel cokmesin.
+        path = self.data_dir / filename
+        if not path.exists():
+            return []
+        return json.loads(path.read_text(encoding="utf-8"))
 
     def _save_json(self, filename: str, payload: Any) -> None:
         (self.data_dir / filename).write_text(
@@ -1194,6 +1199,10 @@ class AdminStore:
                 "INSERT INTO lead_events (user_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
                 (user_id, event_type, json.dumps(payload, ensure_ascii=False), self._utc_now()),
             )
+
+    def record_lead_event(self, user_id: str, event_type: str, payload: Dict[str, Any]) -> None:
+        """Public wrapper: orkestrator gelir olaylarini (odeme linki, teklif kabulu) buradan yazar."""
+        self._record_lead_event(user_id, event_type, payload)
 
     def _bump_lead_stage(self, user_id: str, stage: str) -> None:
         """Lead asamasini yalnizca ileri yonde tasir; manuel karari geri almaz."""

@@ -1,38 +1,45 @@
 import re
-from typing import List, Dict
+from typing import List
 
 class IntentParser:
+    """Regex intent hints for the support domain.
+
+    These do not decide routing (the router LLM does); they feed the prompt
+    context and analytics. 'anger' additionally grounds the handoff decision.
+    """
+
     def __init__(self):
         self.patterns = {
-            'availability': [
-                r'var mı', r'kaldı mı', r'stok', r'boş', 
-                r'satılık', r'elinizde', r'mevcut', r'daire var',
-                r'hangi.*daire', r'hangi.*ev'
+            'settlement': [
+                r'hakedi[şs]', r'param.*yat', r'ne zaman yat', r'yatmad[ıi]',
+                r'yatan para', r'öde(me|nmedi).*gün', r'val[öo]r', r'iban',
             ],
-            'price': [
-                r'fiyat', r'kaç para', r'ne kadar', r'kaç tl', 
-                r'pahalı mı', r'bütçe', r'ödeyeceğim', r'kaça'
+            'transaction': [
+                r'i[şs]lem', r'çektim', r'görem[iü]yorum', r'iade', r'iptal',
+                r'geçti mi', r'sat[ıi][şs] yapt[ıi]m',
             ],
-            'location': [
-                r'nerede', r'konum', r'adres', r'hangi ilçe', 
-                r'uzak mı', r'yakın mı', r'ulaşım'
+            'pos_issue': [
+                r'cihaz', r'\bpos\b', r'aç[ıi]lm[ıi]yor', r'bağlanm[ıi]yor',
+                r'bozuk', r'yazm[ıi]yor', r'ar[ıi]za', r'çal[ıi][şs]m[ıi]yor',
+                r'sinyal', r'3d', r'ka[ğg][ıi]t', r'\bfi[şs]\b',
             ],
-            'sunlight': [
-                r'güneş', r'cephe', r'karanlık', r'aydınlık', 
-                r'kuzey', r'güney', r'doğu', r'batı'
+            'fees': [
+                r'komisyon', r'kesinti', r'\boran\b', r'ücret', r'kesil',
             ],
-            'payment_plan': [
-                r'ödeme', r'taksit', r'peşin', r'vade', 
-                r'kredi', r'banka', r'senet'
+            'statement': [
+                r'ekstre', r'döküm', r'hesap özeti', r'rapor',
             ],
-            'visit': [
-                r'ziyaret', r'görmek', r'randevu', r'gelmek istiyorum', 
-                r'bakmak istiyorum', r'yerinde görmek', r'ofis'
+            'payment_link': [
+                r'link', r'uzaktan (ödeme|tahsilat)',
             ],
-            'callback': [
-                r'arayın', r'ulaşın', r'numaram', r'telefon', 
-                r'beni ara', r'dönüş yap'
-            ]
+            'anger': [
+                r'rezalet', r'[şs]ikayet', r'yeter art[ıi]k', r'b[ıi]kt[ıi]m',
+                r'kimse ilgilenmiyor', r'mahkeme', r'avukat', r'sabr[ıi]m',
+                r'sizi arayaca[ğg][ıi]m dedi', r'kaç gündür',
+            ],
+            'human_request': [
+                r'temsilci', r'yetkili', r'insanla', r'ger[çc]ek biri', r'operatör',
+            ],
         }
 
     def parse(self, text: str) -> List[str]:
@@ -46,19 +53,19 @@ class IntentParser:
             for pattern in patterns:
                 if re.search(pattern, text):
                     detected_intents.append(intent)
-                    break 
-        
-        return list(set(detected_intents)) # Return unique intents
+                    break
+
+        return list(set(detected_intents))
 
 if __name__ == "__main__":
     parser = IntentParser()
     test_sentences = [
-        "3+1 dairelerinizin fiyatı ne kadar?",
-        "Elinizde güney cephe daire kaldı mı?",
-        "Ofisinizi ziyaret etmek istiyorum, adres nerede?",
-        "Taksit imkanınız var mı fiyatlar çok yüksek mi?",
-        "Beni acil arayın"
+        "Param ne zaman yatacak?",
+        "Dün 1.250 TL çektim ama göremiyorum",
+        "POS cihazım açılmıyor, müşteri bekliyor",
+        "Bu komisyon neden bu kadar yüksek?",
+        "Yeter artık, sizi şikayet edeceğim! Temsilci bağlayın.",
     ]
-    
+
     for sent in test_sentences:
         print(f"Text: {sent}\nIntents: {parser.parse(sent)}\n")
