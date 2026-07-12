@@ -169,4 +169,12 @@ def register_call_routes(app, orchestrator) -> None:
                 )
             except Exception as error:
                 print(f"Call end log warning: {error}")
-        return jsonify({"ok": True})
+
+        # Kapanis ozeti: transkript paneline "cagri ozeti" olarak dusurulur.
+        summary = ""
+        try:
+            notes = orchestrator.admin_store.get_user_ai_notes(call_id) if call_id else {}
+            summary = notes.get("ai_summary") or ""
+        except Exception as error:
+            print(f"Call summary warning: {error}")
+        return jsonify({"ok": True, "summary": summary})

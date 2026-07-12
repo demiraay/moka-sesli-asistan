@@ -107,25 +107,35 @@ class GroqWhisperTranscriber:
         body = b"".join(parts)
 
         url = f"{self.config.groq_base_url.rstrip('/')}/audio/transcriptions"
-        request = urllib.request.Request(
-            url,
-            data=body,
-            headers={
-                "Authorization": f"Bearer {self.config.groq_api_key}",
-                "Content-Type": f"multipart/form-data; boundary={boundary}",
-                # Cloudflare, ciplak Python-urllib UA'sini 403'luyor.
-                "User-Agent": "moka-voice-agent/1.0",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                result = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Groq STT istegi basarisiz oldu: {detail}") from error
-        except urllib.error.URLError as error:
-            raise RuntimeError(f"Groq STT baglantisi kurulamadi: {error}") from error
+        keys = [self.config.groq_api_key]
+        if getattr(self.config, "groq_api_key_fallback", ""):
+            keys.append(self.config.groq_api_key_fallback)
+
+        last_error: Exception | None = None
+        result = None
+        for key in keys:
+            request = urllib.request.Request(
+                url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    # Cloudflare, ciplak Python-urllib UA'sini 403'luyor.
+                    "User-Agent": "moka-voice-agent/1.0",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=60) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as error:
+                detail = error.read().decode("utf-8", errors="replace")
+                last_error = RuntimeError(f"Groq STT istegi basarisiz oldu: {detail}")
+            except urllib.error.URLError as error:
+                last_error = RuntimeError(f"Groq STT baglantisi kurulamadi: {error}")
+        if result is None:
+            raise last_error or RuntimeError("Groq STT: anahtar yapilandirilmamis.")
 
         return {
             "text": str(result.get("text", "")).strip(),

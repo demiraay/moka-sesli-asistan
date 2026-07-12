@@ -41,6 +41,8 @@ class Config:
         self.ollama_model = os.getenv('OLLAMA_MODEL', 'gpt-oss:120b-cloud')
         self.openai_model = os.getenv('OPENAI_MODEL', 'gpt-4o')
         self.groq_api_key = os.getenv('GROQ_API_KEY', '')
+        # Demo gunu sigortasi: birincil anahtar kota/ariza yerse otomatik gecis.
+        self.groq_api_key_fallback = os.getenv('GROQ_API_KEY_FALLBACK', '')
         self.groq_base_url = os.getenv('GROQ_BASE_URL', 'https://api.groq.com/openai/v1')
         # 120B: canli testte Turkce kalitesi 70B llama'dan belirgin iyi
         # (llama yabanci kelime karistiriyordu: "realizado", "erfolgreich").
@@ -87,6 +89,7 @@ class Config:
             "openai_api_key": self.openai_api_key,
             "openai_model": self.openai_model,
             "groq_api_key": self.groq_api_key,
+            "groq_api_key_fallback": self.groq_api_key_fallback,
             "groq_base_url": self.groq_base_url,
             "groq_model": groq_model,
         }

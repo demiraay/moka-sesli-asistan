@@ -409,11 +409,13 @@
     el.textForm.hidden = true;
     addSysNote("— arama sona erdi —");
     try {
-      await fetch("/call/end", {
+      const resp = await fetch("/call/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ call_id: callId, mode: cfg.mode, outcome: outcome || "ended" }),
       });
+      const data = await resp.json();
+      if (data.summary) addSysNote("📋 Çağrı özeti: " + data.summary);
     } catch (e) { /* sessiz */ }
     // yeni arama icin kurulum panelini geri getir
     setTimeout(function () {

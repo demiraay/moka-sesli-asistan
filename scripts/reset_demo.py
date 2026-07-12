@@ -57,7 +57,18 @@ def main() -> int:
             store.save_user_ai_notes(user_id=user_id, ai_summary=summary,
                                      ai_notes={"name": name})
         store.create_task(title="Servis raporu: geçen haftanın cihaz değişimleri", user_id="")
-        print("ornek veri yazildi (3 cagri + 1 gorev)")
+        # Gecmis gelir olaylari: pano sifir gorunmesin, canli demo artisi yine gorunsun
+        store.record_lead_event("seed-berber", "offer_accepted", {
+            "trigger": "dormant_retention", "plan_id": "PLAN-RET",
+            "recovered_volume_try": 46500, "merchant_id": "M-1012",
+        })
+        store.save_user_ai_notes(user_id="seed-berber",
+                                 ai_summary="Giden aramada sadakat teklifi kabul edildi.",
+                                 ai_notes={"name": "İbrahim Usta — Usta Berber", "merchant_id": "M-1012"})
+        store.record_lead_event("seed-selin", "payment_link_created", {
+            "url": "https://moka.link/nova-butik-a1b2", "merchant_id": "M-1003",
+        })
+        print("ornek veri yazildi (3 cagri + 1 gorev + gelir gecmisi)")
 
     print("hazir. Paneli baslatabilirsiniz: .venv/bin/python server.py")
     return 0

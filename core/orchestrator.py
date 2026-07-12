@@ -941,7 +941,8 @@ class AgentOrchestrator:
             "Müşterileri bu linkten kartla ödeyebilir, tutarlar hakedişe dahil olur. "
             "Linkin adresini SESLİ OKUMA; SMS'e geldiğini söyle."
         )
-        payload = {"url": link["url"], "amount_try": link.get("amount_try")}
+        payload = {"url": link["url"], "amount_try": link.get("amount_try"),
+                   "merchant_id": merchant.get("merchant_id")}
         pending = user_profile.get("pending_offer") or {}
         if pending.get("trigger") == "pos_out_of_service":
             # POS arizasi sirasindaki linki kabul edilen upsell olarak say.
@@ -966,6 +967,7 @@ class AgentOrchestrator:
         if accepted:
             pending = user_profile.get("pending_offer") or {"trigger": trigger}
             payload = dict(pending)
+            payload["merchant_id"] = merchant.get("merchant_id")
             if pending.get("trigger") == "dormant_retention" or trigger == "dormant_retention":
                 series = [v.get("volume", 0) for v in merchant.get("monthly_volume_try", [])]
                 healthy = sorted(series, reverse=True)[:3]

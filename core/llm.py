@@ -39,21 +39,25 @@ class LLMClient:
 
     def _call_groq(self, system_prompt: str, user_prompt: str, json_mode: bool,
                    profile_settings: Dict[str, Any]) -> str:
-        """Groq with one retry on rate limit / network error, then Ollama fallback."""
-        result = self._call_openai_compatible(
-            profile_settings["groq_base_url"],
-            profile_settings["groq_api_key"],
-            profile_settings["groq_model"],
-            system_prompt, user_prompt, json_mode,
-        )
-        if is_llm_error(result):
-            time.sleep(1.5)
+        """Groq: birincil anahtar -> (429/hata) -> yedek anahtar -> Ollama fallback."""
+        keys = [profile_settings["groq_api_key"]]
+        if profile_settings.get("groq_api_key_fallback"):
+            keys.append(profile_settings["groq_api_key_fallback"])
+
+        result = "Error: no Groq API key configured."
+        for key in keys:
+            if not key:
+                continue
             result = self._call_openai_compatible(
                 profile_settings["groq_base_url"],
-                profile_settings["groq_api_key"],
+                key,
                 profile_settings["groq_model"],
                 system_prompt, user_prompt, json_mode,
             )
+            if not is_llm_error(result):
+                return result
+            time.sleep(1.0)  # yedege gecmeden kisa nefes
+
         if is_llm_error(result) and profile_settings.get("ollama_base_url"):
             fallback = self._call_ollama(system_prompt, user_prompt, json_mode, profile_settings)
             if not is_llm_error(fallback):

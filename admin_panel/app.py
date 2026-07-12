@@ -158,6 +158,7 @@ def create_app(
             "outbound.html",
             dormant=dormant,
             total_risk_try=sum(m.get("lost_volume_try", 0) for m in dormant),
+            recovered_ids=admin_store.get_recovered_merchant_ids(),
         )
 
     @app.post("/admin/briefing/generate")

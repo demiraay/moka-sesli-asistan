@@ -3,6 +3,8 @@
 {% block title %}Uyuyan İşletmeler — {{ panel_project }}{% endblock %}
 
 {% block content %}
+  {# auto-refresh: demo sirasinda arama bitince KPI'lar elle yenilemeden aksin #}
+  <script>setTimeout(function () { window.location.reload(); }, 20000);</script>
   <div class="page-header">
     <h1>Uyuyan İşletmeler</h1>
     <p>İşlem hacmi ciddi düşen müşteriler — sessizce kaybedilmeden önce AI kurtarma araması yapın.</p>
@@ -69,8 +71,14 @@
             {% endif %}
           </td>
           <td>
-            <a class="button compact" target="_blank" rel="noopener"
-               href="/call?mode=outbound&merchant_id={{ m.merchant_id }}">📞 AI Ara</a>
+            {% if m.merchant_id in recovered_ids %}
+              <span class="temp-badge cold" style="background: var(--accent-soft); color: #0a7a3d; border-color: #9adbb7;">✅ Kurtarıldı</span>
+              <a class="button secondary compact" target="_blank" rel="noopener"
+                 href="/call?mode=outbound&merchant_id={{ m.merchant_id }}">Tekrar ara</a>
+            {% else %}
+              <a class="button compact" target="_blank" rel="noopener"
+                 href="/call?mode=outbound&merchant_id={{ m.merchant_id }}">📞 AI Ara</a>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

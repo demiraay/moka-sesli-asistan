@@ -3,6 +3,8 @@
 {% block title %}Komuta Merkezi — {{ panel_project }}{% endblock %}
 
 {% block content %}
+  {# auto-refresh: demo sirasinda arama bitince KPI'lar elle yenilemeden aksin #}
+  <script>setTimeout(function () { window.location.reload(); }, 20000);</script>
   <div class="page-header">
     <h1>Komuta Merkezi</h1>
     <p>Sesli destek hattının anlık görünümü: çağrı akışı, çözüm oranı ve yapay zekânın ürettiği gelir.</p>

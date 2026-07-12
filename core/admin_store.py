@@ -1205,6 +1205,22 @@ class AdminStore:
         """Public wrapper: orkestrator gelir olaylarini (odeme linki, teklif kabulu) buradan yazar."""
         self._record_lead_event(user_id, event_type, payload)
 
+    def get_recovered_merchant_ids(self) -> set:
+        """Kabul edilmis tekliflerin isletme id'leri (outbound 'Kurtarildi' rozeti)."""
+        ids = set()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM lead_events WHERE event_type = 'offer_accepted'"
+            ).fetchall()
+        for row in rows:
+            try:
+                merchant_id = (json.loads(row["payload"] or "{}") or {}).get("merchant_id")
+                if merchant_id:
+                    ids.add(merchant_id)
+            except (ValueError, TypeError):
+                continue
+        return ids
+
     def get_revenue_kpis(self) -> Dict[str, Any]:
         """Gelir panosu: AI'in urettigi somut para etkisi.
 
