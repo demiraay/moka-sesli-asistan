@@ -113,6 +113,8 @@ class GroqWhisperTranscriber:
             headers={
                 "Authorization": f"Bearer {self.config.groq_api_key}",
                 "Content-Type": f"multipart/form-data; boundary={boundary}",
+                # Cloudflare, ciplak Python-urllib UA'sini 403'luyor.
+                "User-Agent": "moka-voice-agent/1.0",
             },
             method="POST",
         )

@@ -94,7 +94,9 @@ class LLMClient:
         url = f"{base_url.rstrip('/')}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            # Cloudflare, ciplak Python-urllib UA'sini 403'luyor (Groq'ta dogrulandi).
+            "User-Agent": "moka-voice-agent/1.0",
         }
 
         payload = {
@@ -108,12 +110,25 @@ class LLMClient:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
-        try:
-            data = json.dumps(payload).encode('utf-8')
-            req = urllib.request.Request(url, data=data, headers=headers)
-            with urllib.request.urlopen(req, timeout=90) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                return result['choices'][0]['message']['content']
-        except Exception as e:
-            return f"Error calling {url}: {str(e)}"
+        data = json.dumps(payload).encode('utf-8')
+        for attempt in (0, 1):
+            try:
+                req = urllib.request.Request(url, data=data, headers=headers)
+                with urllib.request.urlopen(req, timeout=90) as response:
+                    result = json.loads(response.read().decode('utf-8'))
+                    return result['choices'][0]['message']['content']
+            except urllib.error.HTTPError as e:
+                # 429: saglayicinin soyledigi kadar bekle (Retry-After), bir kez dene.
+                if e.code == 429 and attempt == 0:
+                    retry_after = e.headers.get('retry-after') or e.headers.get('Retry-After')
+                    try:
+                        wait = min(float(retry_after), 8.0) if retry_after else 3.0
+                    except ValueError:
+                        wait = 3.0
+                    time.sleep(wait)
+                    continue
+                return f"Error calling {url}: HTTP Error {e.code}: {e.reason}"
+            except Exception as e:
+                return f"Error calling {url}: {str(e)}"
+        return f"Error calling {url}: rate limited"
 

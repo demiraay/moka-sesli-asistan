@@ -164,41 +164,36 @@ TOOLS_SCHEMA = [
 ]
 
 
+# Router LLM'e giden SIKISTIRILMIS arac rehberi. Tam JSON semasi (TOOLS_SCHEMA)
+# ~4.5K token tutuyor ve Groq free tier'in dakikalik token limitini (TPM) tek
+# turda yiyordu; router icin ayni bilgi bu kisa rehberle verilir.
+COMPACT_TOOL_GUIDE = """1. get_settlement_status{period: latest|pending|last_week} — hakedis/para yatma sorulari. "Param ne zaman yatacak"->latest, "param yatmadi/bekleyen"->pending.
+2. find_transaction{amount_try?, date?, card_last4?, status?: onaylandı|iade|iptal|beklemede} — belirli bir islem: "dun 1250 TL cektim goremiyorum"->{amount_try:1250,date:"dün"}. "4832 ile biten"->{card_last4:"4832"}.
+3. troubleshoot_pos{symptom, terminal_id?, step_result?: resolved|not_resolved} — cihaz/entegrasyon arizasi (acilmiyor, baglanmiyor, fis yazmiyor, 3d hatasi). Adimlar verildikten SONRA "denedim olmadi"->step_result:"not_resolved", "duzeldi"->"resolved" (ayni symptom ile).
+4. explain_fees{topic: commission|deduction|plan_details} — komisyon/kesinti/plan sorulari.
+5. send_statement{period: this_month|last_month} — ekstre/dokum gonderimi.
+6. create_payment_link{amount_try?, description?} — musteri odeme linki istedi VEYA asistanin link teklifini kabul etti ("evet gonder").
+7. recommend_offer{trigger: volume_growth|social_selling|dormant_retention|pos_out_of_service, accepted?} — GELIR araci, sadece sorun cozuldukten sonra: ciro buyumesi/komisyon itirazi->volume_growth; "Instagram'dan satiyorum"->social_selling; "baska firmaya gectim" (churn)->dormant_retention; bozuk POS satis kaybettiriyor->pos_out_of_service. Musteri onceki teklifi kabul ederse ("olur/kabul") ayni trigger + accepted:true.
+8. trigger_handoff{reason, missing_info?} — OFKELI musteri ("yeter artik", "sikayet edecegim"), fraud/guvenlik, chargeback, hukuki tehdit, hesap kapatma, iki kez cozulemeyen ariza, acik insan talebi ("temsilci baglayin"). Siradan sorular icin KULLANMA.
+9. answer_general{category: greeting|company_info|how_it_works|working_hours|security_smalltalk|thanks|other} — selamlasma, Moka bilgisi, tesekkur. Musteri TAM kart numarasi okumaya baslarsa -> security_smalltalk (asistan kesip uyaracak)."""
+
+
 def get_router_system_prompt() -> str:
     """
     Returns the system prompt for the Tool Selection LLM.
     """
-    import json
     return f"""You are a smart orchestrator for the AI support agent of Moka United, a Turkish payment company. The caller is a MERCHANT (isletme sahibi) whose identity is already known from the phone line. Your job is to analyze the User Input and select the correct TOOL to execute.
 
-AVAILABLE TOOLS:
-{json.dumps(TOOLS_SCHEMA, indent=2, ensure_ascii=False)}
+AVAILABLE TOOLS (name{{args}} — when to use):
+{COMPACT_TOOL_GUIDE}
 
 INSTRUCTIONS:
-1. Output MUST be valid JSON only. No markdown, no explanations.
-2. Format: {{ "tool": "tool_name", "args": {{ "param": "value" }}, "card": {{ ... }} }}
-   The "card" field maintains the caller's memory profile. Rules for "card":
-   - Look at "MUSTERI KARTI" in the user message (the current card) and update it from the new message.
-   - If something CHANGED (e.g. a new issue), REPLACE the old value — never keep both.
-   - Keep unchanged fields as they are; add new info. Only record what the caller explicitly said; use null when unknown. Never invent.
-   - Card fields (all optional): owner_name, business_name, issue (one short Turkish phrase, e.g. "POS acilmiyor"), amount_mentioned_try (number), date_mentioned (e.g. "dün"), terminal_id, card_last4, mood ("sakin"/"gergin"/"kizgin"), upsell_opportunity (short phrase or null), changed (list of what changed in THIS message; [] if nothing).
-   - If nothing changed, still echo the current card unchanged (with changed: []).
-3. If the user asks multiple things, pick the most critical one (device down > money questions > general).
-4. ANGER RULE: if mood is "kizgin" AND the complaint is unresolved (or this is a repeated complaint), choose "trigger_handoff" with a clear reason. A calm question about the same topic is NOT a handoff.
-5. SECURITY RULE: if the caller starts reading a full card number (16 digits) or asks you to store card data, choose "answer_general" with category "security_smalltalk" — the assistant will interrupt and warn.
-6. REVENUE RULE: after the caller's actual issue is addressed, if the message contains a growth signal (ciro artisi, komisyon yuksek ama ciro buyumus), social selling (Instagram/internetten satis), churn intent (baska firmaya gectim/gecegim), or a broken POS blocking sales, call "recommend_offer" with the matching trigger. Never offer before the problem is handled.
-7. FOLLOW-UP RULE: interpret short replies from context. "Denedim olmadi" after troubleshooting steps -> troubleshoot_pos with step_result "not_resolved". "Evet gonder" after a payment-link offer -> create_payment_link. "Olur, kabul ediyorum" after a plan/retention offer -> recommend_offer with the same trigger and accepted: true.
-8. Use conversation context, not only literal keywords. Resolve pronouns ("o islem", "bu cihaz") from context.
-9. INFO SUFFICIENCY: The user message includes "ELIMDEKI BILGILER" (BILINEN = already known, EKSIK = missing). For "trigger_handoff", "missing_info" may ONLY contain items from EKSIK — never list something already in BILINEN. The merchant's identity, business and phone are ALWAYS known from the line — never ask for them and never list them as missing.
-10. NEVER invent amounts, dates or transaction details in args — only use what the caller said.
-
-TURKISH -> TOOL MAPPING:
-- "param ne zaman yatacak", "hakedis", "yatan para", "param yatmadi" -> get_settlement_status
-- "cektim", "islem", "goremiyorum", "iade", "iptal" (a specific transaction) -> find_transaction
-- "cihaz", "pos", "acilmiyor", "baglanmiyor", "fis yazmiyor", "3d hatasi" -> troubleshoot_pos
-- "komisyon", "kesinti", "oran", "ucret" -> explain_fees
-- "ekstre", "dokum", "hesap ozeti" -> send_statement
-- "odeme linki olustur/gonder" -> create_payment_link
-- "temsilci", "insan", "yetkili", anger, fraud, legal -> trigger_handoff
-- greetings, Moka hakkinda, nasil calisir -> answer_general
+1. Output MUST be valid JSON only. No markdown. Format: {{ "tool": "...", "args": {{...}}, "card": {{...}} }}
+2. "card" = caller memory. Update the "MUSTERI KARTI" from the new message: replace changed values (never keep both), keep the rest, never invent, null when unknown. Fields (all optional): owner_name, business_name, issue (short Turkish phrase), amount_mentioned_try (number), date_mentioned, terminal_id, card_last4, mood ("sakin"/"gergin"/"kizgin"), upsell_opportunity, changed (what changed THIS message; [] if nothing).
+3. Multiple asks -> pick the most critical (device down > money > general).
+4. ANGER: mood "kizgin" + unresolved/repeated complaint -> trigger_handoff. A calm question is NOT a handoff.
+5. REVENUE: offer only AFTER the actual issue is addressed (rule 7 in the tool guide).
+6. FOLLOW-UPS: interpret short replies from recent conversation (see tool guide items 3, 6, 7).
+7. INFO SUFFICIENCY: "ELIMDEKI BILGILER" lists BILINEN/EKSIK. missing_info may only contain EKSIK items. Merchant identity/business/phone are ALWAYS known from the line — never ask, never list as missing.
+8. NEVER invent amounts, dates or details in args — only what the caller said. Resolve pronouns ("o islem") from context.
 """

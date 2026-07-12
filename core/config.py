@@ -42,8 +42,12 @@ class Config:
         self.openai_model = os.getenv('OPENAI_MODEL', 'gpt-4o')
         self.groq_api_key = os.getenv('GROQ_API_KEY', '')
         self.groq_base_url = os.getenv('GROQ_BASE_URL', 'https://api.groq.com/openai/v1')
-        self.groq_model = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
-        self.groq_router_model = os.getenv('GROQ_ROUTER_MODEL', 'llama-3.1-8b-instant')
+        # 120B: canli testte Turkce kalitesi 70B llama'dan belirgin iyi
+        # (llama yabanci kelime karistiriyordu: "realizado", "erfolgreich").
+        self.groq_model = os.getenv('GROQ_MODEL', 'openai/gpt-oss-120b')
+        # Router ayri modelde kosar: hem hizli hem de Groq free tier'da her model
+        # AYRI dakikalik token kovasina sahip — cevap LLM'inin (70B) kotasini yemez.
+        self.groq_router_model = os.getenv('GROQ_ROUTER_MODEL', 'openai/gpt-oss-20b')
 
         # Voice I/O settings
         self.whisper_model = os.getenv('WHISPER_MODEL', 'base')

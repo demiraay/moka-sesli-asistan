@@ -143,6 +143,23 @@ class AgentOrchestrator:
 
         return "\n".join(lines)
 
+    def _build_merchant_router_line(self, merchant: Dict[str, Any] | None,
+                                    user_id: str) -> str:
+        """Router icin TEK SATIRLIK isletme ozeti: tam profil cevap LLM'ine gider,
+        router'a gitmez (token butcesi — Groq free tier TPM)."""
+        if not merchant:
+            return ""
+        plan = merchant.get("plan") or {}
+        trend = merchant.get("volume_trend") or {}
+        line = (
+            f"MERCHANT: {merchant.get('business_name')} ({merchant.get('merchant_id')}), "
+            f"urunler: {','.join(merchant.get('products', []))}, plan %{plan.get('rate_pct')}, "
+            f"ciro trendi %{trend.get('change_pct', 0)}"
+        )
+        if (self.call_contexts.get(user_id) or {}).get("mode") == "outbound":
+            line += " — OUTBOUND kurtarma aramasi (churn sinyalinde recommend_offer/dormant_retention)"
+        return line
+
     # ------------------------------------------------------------- profiles
 
     def _get_user_profile(self, user_id: str) -> Dict[str, Any]:
@@ -1021,7 +1038,7 @@ class AgentOrchestrator:
             user_profile=user_profile,
             current_history=current_history,
             current_slots=current_slots,
-            merchant_block=merchant_block,
+            merchant_block=self._build_merchant_router_line(merchant, user_id),
         )
 
         # AGENTIC HAFIZA: musteri kartini router LLM'in ayni cagrida urettigi
