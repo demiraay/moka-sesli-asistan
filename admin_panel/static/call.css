@@ -48,7 +48,10 @@ body::before {
   display: grid;
   grid-template-columns: 1fr 390px;
   min-height: 100vh;
+  transition: grid-template-columns 0.25s ease;
 }
+.call-shell.no-transcript { grid-template-columns: 1fr 0px; }
+.call-shell.no-transcript .transcript-pane { display: none; }
 @media (max-width: 900px) {
   .call-shell { grid-template-columns: 1fr; }
   .transcript-pane { display: none; }
@@ -118,6 +121,20 @@ body::before {
   font-variant-numeric: tabular-nums;
   backdrop-filter: blur(10px);
 }
+
+.btn-transcript {
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: color 0.15s, border-color 0.15s;
+}
+.btn-transcript:hover { color: var(--ink); border-color: rgba(255, 255, 255, 0.25); }
+.btn-transcript.active { color: var(--green); border-color: rgba(0, 210, 100, 0.4); }
 
 .merchant-chip {
   display: flex; align-items: center; gap: 8px;

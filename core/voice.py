@@ -61,7 +61,8 @@ class WhisperTranscriber:
             self._loaded_models[cache_key] = whisper.load_model(model_name, device=device)
         return self._loaded_models[cache_key]
 
-    def transcribe(self, audio_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+    def transcribe(self, audio_path: str, language: Optional[str] = None,
+                   prompt: Optional[str] = None) -> Dict[str, Any]:
         audio_file = Path(audio_path)
         if not audio_file.exists():
             raise FileNotFoundError(f"Ses dosyasi bulunamadi: {audio_file}")
@@ -72,6 +73,7 @@ class WhisperTranscriber:
         result = model.transcribe(
             str(audio_file),
             language=target_language,
+            initial_prompt=prompt,
             fp16=False,
         )
         return {
@@ -97,7 +99,8 @@ class GroqWhisperTranscriber:
     def is_configured(self) -> bool:
         return bool(self.config.groq_api_key)
 
-    def transcribe(self, audio_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+    def transcribe(self, audio_path: str, language: Optional[str] = None,
+                   prompt: Optional[str] = None) -> Dict[str, Any]:
         audio_file = Path(audio_path)
         if not audio_file.exists():
             raise FileNotFoundError(f"Ses dosyasi bulunamadi: {audio_file}")
@@ -118,6 +121,10 @@ class GroqWhisperTranscriber:
         add_field("language", target_language)
         add_field("response_format", "json")
         add_field("temperature", "0")
+        if prompt:
+            # Whisper 'prompt' alanini onceki baglam gibi kullanir: alan
+            # sozlugu vermek "Ada/hakedis/POS" gibi kelimeleri dogru cozdurur.
+            add_field("prompt", prompt)
         parts.append(
             (
                 f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
@@ -176,13 +183,14 @@ class CompositeTranscriber:
         self.groq = GroqWhisperTranscriber(self.config)
         self.local = WhisperTranscriber(self.config)
 
-    def transcribe(self, audio_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+    def transcribe(self, audio_path: str, language: Optional[str] = None,
+                   prompt: Optional[str] = None) -> Dict[str, Any]:
         if self.groq.is_configured():
             try:
-                return self.groq.transcribe(audio_path, language=language)
+                return self.groq.transcribe(audio_path, language=language, prompt=prompt)
             except Exception as error:
                 print(f"Groq STT fallback: {error}")
-        return self.local.transcribe(audio_path, language=language)
+        return self.local.transcribe(audio_path, language=language, prompt=prompt)
 
 
 class ElevenLabsSynthesizer:

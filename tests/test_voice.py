@@ -59,7 +59,7 @@ class TestVoice(unittest.TestCase):
             load_model = fake_whisper.load_model
 
             load_model.assert_called_once_with("large", device="cpu")
-            model.transcribe.assert_called_once_with(str(audio_path), language="tr", fp16=False)
+            model.transcribe.assert_called_once_with(str(audio_path), language="tr", initial_prompt=None, fp16=False)
             self.assertEqual(result["text"], "Merhaba")
 
     def test_elevenlabs_synthesizer_writes_mp3_output(self):

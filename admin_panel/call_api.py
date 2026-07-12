@@ -33,6 +33,14 @@ def register_call_routes(app, orchestrator) -> None:
     voice_dir.mkdir(parents=True, exist_ok=True)
     # Cagri basina secilen ses: /call/start'ta belirlenir, /call/turn'de kullanilir.
     call_voice_ids: dict[str, str] = {}
+    # Cagri basina STT baglam sozlugu: Whisper'in "Ada/hakedis/POS" gibi alan
+    # kelimelerini dogru cozmesi icin prompt olarak verilir.
+    call_stt_prompts: dict[str, str] = {}
+    STT_LEXICON = (
+        "Moka destek hattı görüşmesi. Asistanın adı Ada. Sık geçen terimler: "
+        "hakediş, POS, sanal POS, ödeme linki, komisyon, ekstre, IBAN, iade, "
+        "iptal, terminal, işlem, ciro, tahsilat."
+    )
 
     def _default_voice_id() -> str:
         """Adminden secilen varsayilan ses; yoksa .env'deki ses."""
@@ -96,6 +104,11 @@ def register_call_routes(app, orchestrator) -> None:
             call_id, channel="voice", mode=mode, merchant_id=merchant_id, goal=goal
         )
         llm_ms = int((time.perf_counter() - started) * 1000)
+        merchant_info = result.get("merchant") or {}
+        call_stt_prompts[call_id] = (
+            f"{STT_LEXICON} Arayan: {merchant_info.get('owner_name', '')} "
+            f"({merchant_info.get('business_name', '')})."
+        )
         audio_url, tts_ms = _synthesize(result["reply_text"], f"greet-{call_id}", voice_id)
 
         return jsonify({
@@ -128,7 +141,9 @@ def register_call_routes(app, orchestrator) -> None:
 
             started = time.perf_counter()
             try:
-                transcription = transcriber.transcribe(str(input_path))
+                transcription = transcriber.transcribe(
+                    str(input_path), prompt=call_stt_prompts.get(call_id, STT_LEXICON)
+                )
             except Exception as error:
                 print(f"STT error: {error}")
                 return jsonify({"error": "Ses cozumlenemedi", "detail": str(error)}), 502
@@ -212,6 +227,8 @@ def register_call_routes(app, orchestrator) -> None:
         try:
             notes = orchestrator.admin_store.get_user_ai_notes(call_id) if call_id else {}
             summary = notes.get("ai_summary") or ""
+            if summary.startswith("Henüz kayda değer"):
+                summary = ""
         except Exception as error:
             print(f"Call summary warning: {error}")
         return jsonify({"ok": True, "summary": summary})

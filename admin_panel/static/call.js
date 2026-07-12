@@ -33,6 +33,7 @@
     merchantChip: document.getElementById("merchant-chip"),
     merchantLabel: document.getElementById("merchant-label"),
     handoffNote: document.getElementById("handoff-note"),
+    transcriptToggle: document.getElementById("transcript-toggle"),
   };
 
   // --- durum ---
@@ -206,20 +207,18 @@
 
     if (state === "listening") {
       if (!recorder || recorder.state !== "recording") {
-        // konusma baslangici bekleniyor
-        if (rms > VAD.startThr) {
-          if (!speechAboveSince) speechAboveSince = now;
-          if (now - speechAboveSince >= VAD.speechStartMs) startRecording();
-        } else {
-          speechAboveSince = 0;
-        }
+        // Kayit ANINDA baslar: bekleme suresi kelimenin basini kirpiyordu
+        // ("Merhaba Ada" -> "...da" -> yanlis transkript). Yanlis alarmlar
+        // asagida yerel olarak cope atilir, sunucuya hic gitmez.
+        if (rms > VAD.startThr) startRecording();
       } else {
-        // kayit suruyor: bitis / max sure kontrolu
+        // kayit suruyor: bitis / max sure / yanlis alarm kontrolu
         if (rms < VAD.startThr) {
           if (!silenceSince) silenceSince = now;
-          const spoke = now - recordingStartedAt - (now - silenceSince);
-          if (now - silenceSince >= VAD.speechEndMs && spoke >= VAD.minSpeechMs) {
-            stopRecordingAndSend();
+          if (now - silenceSince >= VAD.speechEndMs) {
+            const spoke = silenceSince - recordingStartedAt;
+            if (spoke >= VAD.minSpeechMs) stopRecordingAndSend();
+            else discardRecording();  // kisa gurultu — upload yok
           }
         } else {
           silenceSince = 0;
@@ -255,6 +254,15 @@
     };
     recorder.start();
     recordingStartedAt = performance.now();
+  }
+
+  function discardRecording() {
+    if (!recorder) return;
+    recorder.onstop = null;
+    try { recorder.stop(); } catch (e) { /* zaten durmus */ }
+    recorder = null;
+    chunks = [];
+    silenceSince = 0;
   }
 
   function stopRecordingAndSend() {
@@ -482,6 +490,22 @@
     stopAgentAudio();
     sendTextTurn(text);
   });
+
+  // Transkript panelini ac/kapa (tercih hatirlanir)
+  if (el.transcriptToggle) {
+    var shell = document.querySelector(".call-shell");
+    function applyTranscript(visible) {
+      shell.classList.toggle("no-transcript", !visible);
+      el.transcriptToggle.classList.toggle("active", visible);
+      try { localStorage.setItem("call.transcript", visible ? "1" : "0"); } catch (e) {}
+    }
+    var saved = "1";
+    try { saved = localStorage.getItem("call.transcript") || "1"; } catch (e) {}
+    applyTranscript(saved === "1");
+    el.transcriptToggle.addEventListener("click", function () {
+      applyTranscript(shell.classList.contains("no-transcript"));
+    });
+  }
 
   setState("idle");
 })();

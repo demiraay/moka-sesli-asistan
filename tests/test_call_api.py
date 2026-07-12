@@ -31,7 +31,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         voice_module.CompositeTranscriber,
         "transcribe",
-        lambda self, path, language=None: {"text": "Param ne zaman yatacak?", "engine": "fake"},
+        lambda self, path, language=None, prompt=None: {"text": "Param ne zaman yatacak?", "engine": "fake"},
     )
     monkeypatch.setattr(
         voice_module.ElevenLabsSynthesizer, "is_configured", lambda self: True
