@@ -1,89 +1,112 @@
-# Voice Agent — AI Destekli Emlak Satış Asistanı
+# Moka Sesli Asistan (Ada) — AI Destekli Sesli Müşteri Hattı
 
-Konut projesi satışı için **tam agentic** yapay zeka satış asistanı + satış ofisi CRM paneli.
-Müşterilerle WhatsApp üzerinden Türkçe konuşur, stok/fiyat sorularını gerçek envanterden
-yanıtlar, satın alma sinyali yakalayınca insan danışmana devreder. Yanında, Türk konut
-projesi satış sürecine göre tasarlanmış tam donanımlı bir yönetim paneli gelir.
+**Moka United FinTech Hackathon: Hack the Idea** projesi.
 
-## Özellikler
+Bankaların "1'e basın, 2'ye basın, sırada 14. kişisiniz" çilesinin yerine geçen,
+işletme müşterileriyle **doğal Türkçe sesle** konuşan tam agentic bir yapay zeka
+destek hattı. Ada, arayan esnafın derdini **tek çağrıda gerçek veriyle** çözer —
+ve destek hattını maliyet merkezi olmaktan çıkarıp **gelir motoruna** çevirir:
 
-### 🤖 AI Satış Asistanı
-- **Tam agentic mimari**: sabit senaryo/akış yok — araç seçimini ve her cevabı LLM üretir
-  (Router LLM → araç → cevap üretimi)
-- Araçlar: envanter arama, fiyat sorgulama, insana devir (handoff), genel sohbet
-- WhatsApp (whatsapp-web.js) ve sesli kanal (Whisper STT + ElevenLabs TTS) desteği
-- Konuşma hafızası: yeniden başlatmada geçmiş veritabanından geri yüklenir
-- Telefon/adres bilgileri yalnızca satış profilinden — uydurma koruması prompt seviyesinde
-
-### 🖥️ Yönetim Paneli (CRM)
-| Modül | Ne yapar |
-|---|---|
-| Komuta Merkezi | KPI'lar (mesai dışı yakalanan lead dahil), grafikler, sıcak lead listesi |
-| Günün Brifingi | LLM'in panel verisinden yazdığı Türkçe sabah özeti |
-| Stok Panosu | Blok/kat/daire renk kodlu matris, tek tık durum değişikliği |
-| Opsiyon & Kapora | Süreli opsiyon (otomatik düşme), kapora kaydı, satış geçişleri |
-| Müşteri Adayları | 7 aşamalı sürükle-bırak kanban, sıcaklık skorlama, AI aşama önerisi |
-| Talep Eşleştirme | AI'ın çıkardığı tercihlere uyan daireleri skorlayıp önerir |
-| Handoff Kuyruğu | İnsan bekleyen konuşmalar, SLA sayacı, tek tık devralma |
-| Canlı Devralma | AI'ı duraklat, müşteriye panelden insan olarak WhatsApp yaz |
-| Ödeme Planı | Peşinat/taksit/ara ödeme/vade farkı hesabı + yazdırılabilir teklif |
-| Analitik | Dönüşüm hunisi, talep-stok baskısı, AI performansı, CSV export |
-| Görevler | Otomatik takip listesi (temassız lead, dolan opsiyon) + manuel görevler |
-| Test Sohbeti | Agent'ı WhatsApp'a gerek kalmadan panelden test et |
+- **Anında çözüm**: hakediş ("param ne zaman yatacak?"), işlem sorgusu
+  ("dün 1.250 TL çektim, göremiyorum"), POS arızası (adım adım + servis kaydı),
+  komisyon açıklama, ekstre gönderimi — hepsi gerçek işlem verisine dayanır,
+  asla uydurmaz.
+- **Her çağrıda satış fırsatı**: POS'u bozulan esnafa anında ödeme linki, cirosu
+  büyüyene daha uygun komisyon planı, Instagram'dan satana sanal POS önerisi.
+- **Proaktif kurtarma (outbound)**: işlem hacmi düşen "uyuyan" işletmeleri panel
+  tespit eder; tek tıkla **AI kendisi arar**, churn sebebini öğrenir, sadakat
+  teklifi sunar. Kabul edilen her teklif panele **"Kurtarılan Hacim ₺"** olarak işlenir.
+- **Akıllı insan devri**: öfke/fraud/hukuki sinyalde tüm bağlam özetiyle
+  temsilciye aktarır (panelde SLA sayaçlı handoff kuyruğu).
 
 ## Mimari
 
 ```
-Telefon → WhatsApp Web → Node botu (whatsapp_mesaj_bot/)
-      → Flask köprüsü :5051 (whatsapp/) → AgentOrchestrator (core/)
-                                              ├── Router LLM (araç seçimi)
-                                              ├── Araçlar (envanter/fiyat/handoff)
-                                              └── Cevap LLM'i
-Yönetim paneli :5050 (admin_panel/) ←→ SQLite (data/admin.sqlite3) + JSON veri (data/)
+Arayan işletme ──> Tarayıcı "arama" ekranı (/call)
+                    · VAD: konuşma otomatik algılanır (tuş yok)
+                    · barge-in: Ada konuşurken söze girilebilir
+                         │  webm/opus
+                         ▼
+             Flask call API (:5050/call/*)
+                         │
+     STT: Groq Whisper (large-v3-turbo, ~0.4s)  [lokal whisper fallback]
+                         ▼
+             AgentOrchestrator (core/)
+              ├── Router LLM (gpt-oss-20b): araç seçimi + müşteri kartı (JSON)
+              ├── 9 araç → mock Moka backend (data/*.json)
+              │    hakediş · işlem · POS arıza · komisyon · ekstre
+              │    ödeme linki · teklif · handoff · genel
+              └── Cevap LLM (gpt-oss-120b): doğal Türkçe, sese uygun
+                         ▼
+     TTS: ElevenLabs flash v2.5 (~0.6s)  →  tarayıcıda otomatik çalar
+
+Yönetim paneli :5050/admin  ←→  SQLite + JSON mock backend
+WhatsApp (ikincil kanal): Node bot → köprü :5051 → aynı orchestrator
 ```
 
-- **LLM**: Ollama (varsayılan) veya OpenAI — `core/llm.py`
-- **Veri**: 212 dairelik envanter/fiyat/güneş JSON'ları + SQLite (konuşmalar, lead'ler,
-  rezervasyonlar, teklifler, görevler)
+**Uçtan uca tur süresi ~2-3 saniye** (STT+LLM+LLM+TTS). Kimlik telefondan gelir
+(CTI gibi): AI kim aradığını bilir, asla "TC kimlik no'nuzu tuşlayın" demez.
 
 ## Kurulum
 
 ```bash
-# 1. Python bağımlılıkları
-pip install -r requirements.txt        # openai-whisper için ffmpeg gerekir
+python3 -m venv .venv
+.venv/bin/pip install flask python-dotenv pytest    # çekirdek
+# opsiyonel: lokal STT fallback için → .venv/bin/pip install openai-whisper (ffmpeg gerekir)
 
-# 2. Node botu
-cd whatsapp_mesaj_bot && npm install && cd ..
-
-# 3. Yapılandırma
-cp .env.example .env                   # LLM, panel parolası, köprü token'ı vb.
-
-# 4. LLM (varsayılan mod)
-ollama serve                           # ve .env'deki OLLAMA_MODEL'i indirin
+cp .env.example .env    # ve doldurun:
+#   GROQ_API_KEY        → console.groq.com (ücretsiz) — LLM + STT
+#   ELEVENLABS_API_KEY  → elevenlabs.io — Ada'nın Türkçe sesi
+#   ELEVENLABS_VOICE_ID → bir premade ses (ör. Sarah: EXAVITQu4vr4xnSDxMaL)
 ```
 
 ## Çalıştırma
 
 ```bash
-python server.py
+.venv/bin/python server.py         # panel + köprü (+ Node kuruluysa WhatsApp botu)
+# veya yalnızca panel:
+.venv/bin/python scripts/run_admin_panel.py
 ```
 
-Tek komut üç servisi başlatır ve sağlıklarını izler: admin paneli
-(http://127.0.0.1:5050/admin), WhatsApp köprüsü (:5051) ve QR kodla eşleşen
-WhatsApp botu. `Ctrl+C` hepsini kapatır.
+| Adres | Ne |
+|---|---|
+| http://127.0.0.1:5050/call | 📞 Sesli arama ekranı (demonun kalbi) |
+| http://127.0.0.1:5050/admin | Komuta Merkezi (KPI + Kurtarılan Hacim ₺) |
+| http://127.0.0.1:5050/admin/outbound | Uyuyan İşletmeler → "AI Ara" |
+
+Demo öncesi temiz başlangıç:
+
+```bash
+.venv/bin/python scripts/reset_demo.py --seed   # panel KAPALIYKEN
+```
+
+## Demo senaryoları
+
+| # | Söyle | Ne olur |
+|---|---|---|
+| S1 | "Param ne zaman yatacak?" | Hakediş: net 44.104 TL, yarın 10:00, sonu 44 17 IBAN |
+| S2 | "Dün 1.250 TL çektim, göremiyorum" | İşlemi bulur: onaylı, yarınki hakedişte — panik biter |
+| S3 | "POS cihazım açılmıyor!" → "Denedim, olmadı" → "Evet gönder" | Adım adım arıza → servis kaydı → **ödeme linki upsell** |
+| S4 | "Komisyon neden bu kadar yüksek?" | Veriyle açıklar + Esnaf Plus'a geçiş önerir (~900 TL/ay tasarruf) |
+| S5 | "Instagram'dan satıyorum, kolay yolu yok mu?" | Sanal POS + ödeme linki cross-sell |
+| S6 | "Yeter artık, şikayet edeceğim!" | Handoff: özetle temsilciye; panelde SLA kuyruğu |
+| S7 | Panel → Uyuyan İşletmeler → **AI Ara** (Yıldız Cafe) | **Ada önce konuşur**, churn'ü öğrenir, sadakat planı sunar → kabulde Kurtarılan Hacim +143.333 TL |
+
+Mock veride tarihler `D-1`/`D+1` token'larıyla göreli tutulur — demo verisi
+hiçbir zaman bayatlamaz.
 
 ## Testler
 
 ```bash
-python -m pytest tests/ --ignore=tests/test_voice.py   # test_voice whisper/torch ister
+.venv/bin/python -m pytest tests/ --ignore=tests/test_voice.py   # 83 test
 ```
 
-## Güvenlik Notları
+Senaryo dispatch'leri (S1-S7), veri katmanı, call API, WhatsApp köprüsü ve
+destek NLU'su sahte LLM'le deterministik test edilir.
 
-- `ADMIN_PASSWORD` doluysa panel HTTP Basic Auth ile korunur
-- `WHATSAPP_BRIDGE_TOKEN` doluysa köprü uçları imzasız istekleri reddeder
-- `data/admin.sqlite3` (gerçek konuşmalar) ve WhatsApp oturum dosyaları `.gitignore`'dadır
+## Güvenlik
 
-## Yol Haritası
-
-Tamamlanan fazlar ve sıradaki adaylar için [docs/PANEL_ROADMAP.md](docs/PANEL_ROADMAP.md).
+- Müşteri tam kart numarası okumaya kalkarsa Ada **sözünü keser** (yalnız son 4 hane)
+- Tüm tutar/tarih bilgisi araç verisinden gelir; prompt seviyesinde uydurma koruması
+- `ADMIN_PASSWORD` doluysa panel Basic Auth ile korunur; köprü token'la kilitlenebilir
+- `.env`, `data/admin.sqlite3` ve ses çıktıları `.gitignore`'dadır
