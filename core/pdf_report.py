@@ -167,6 +167,7 @@ _PREAMBLE = r"""\documentclass[10pt]{article}
 \usepackage{pgfplots}
 \usepackage{tikz}
 \usepackage{amssymb}
+\usepackage{graphicx}
 \usepackage{enumitem}
 \pgfplotsset{compat=1.18}
 \usepackage[hidelinks]{hyperref}
@@ -214,13 +215,30 @@ _PREAMBLE = r"""\documentclass[10pt]{article}
 """
 
 
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_LOGO_PATH = os.path.join(_BASE_DIR, "assets", "moka-logo.pdf")
+
+
+def _brand_bar(footer_label: str, generated_on: str) -> str:
+    """Rapor basi: Moka logosu (sol) + rapor tipi/tarih (sag) + ince ayrac.
+
+    Logo yesil banttan ONCE, beyaz zeminde durur — marka renkleri (lacivert +
+    mint) yesil ustunde kaybolmasin. Logo yoksa (rsvg uretmemis) atlanir."""
+    if not os.path.exists(_LOGO_PATH):
+        return ""
+    return (r"\includegraphics[height=7.5mm]{" + _LOGO_PATH + r"}\hfill"
+            r"{\footnotesize\color{gray}" + esc(footer_label) + r" \textbullet\ " +
+            esc(generated_on) + r"}\\[2pt]"
+            r"{\color{softline}\rule{\linewidth}{0.6pt}}\vspace{5pt}" + "\n")
+
+
 def _document(project_name: str, generated_on: str, body: str,
               footer_label: str = "Müşteri Raporu") -> str:
     preamble = (_PREAMBLE
                 .replace("__PROJECT__", esc(project_name))
                 .replace("__FOOTER__", esc(footer_label))
                 .replace("__GENERATED__", esc(generated_on)))
-    return preamble + body + "\n\\end{document}\n"
+    return preamble + _brand_bar(footer_label, generated_on) + body + "\n\\end{document}\n"
 
 
 # ----------------------------------------------------------- musteri raporu
@@ -307,7 +325,7 @@ def render_customer_report(data: Dict[str, Any], *, project_name: str,
     parts.append(_settlements_table(data.get("settlements", [])))
     parts.append(r"\end{minipage}\hfill\begin{minipage}[t]{0.48\linewidth}")
     parts.append(r"\sectionband{Son işlemler}")
-    parts.append(_transactions_table(data.get("transactions", [])[:8]))
+    parts.append(_transactions_table(data.get("transactions", [])[:6]))
     parts.append(r"\end{minipage}\par")
 
     # Konusma -> not kapali dongusu: AI icgoruleri (kapali dongu, raporun 'not'
@@ -349,7 +367,7 @@ def _settlements_table(rows: List[Dict[str, Any]]) -> str:
     if not rows:
         return r"\textit{\small Hakediş kaydı yok.}"
     body = []
-    for s in rows[:8]:
+    for s in rows[:6]:
         body.append(" & ".join([
             esc(s.get("batch_id")), _short_date(s.get("batch_date")),
             _money(s.get("gross_try")), esc(s.get("status"))]) + r"\\")
@@ -380,8 +398,10 @@ def _contacts_table(rows: List[Dict[str, Any]]) -> str:
         return r"\textit{\small Temas kaydı yok.}"
     body = []
     for c in rows[:8]:
+        outcome = c.get("outcome")
+        tag = (r" {\scriptsize\bfseries\color{moka}[" + esc(outcome) + "]}") if outcome else ""
         body.append(
-            r"{\footnotesize " + esc((c.get("subject") or "")[:26]) + r"} "
+            r"{\footnotesize " + esc((c.get("subject") or "")[:24]) + r"}" + tag + r" "
             r"{\scriptsize\color{gray}" + _short_date(c.get("contacted_at")) +
             r" · " + esc(c.get("channel")) + r"} & "
             r"{\footnotesize " + esc((c.get("note") or "")[:60]) + r"}\\")

@@ -237,8 +237,19 @@ _V3_STATEMENTS: List[str] = [
 ]
 
 
+# Konusma->CRM derinlestirme: her temas kaydina cozum durumu (outcome:
+# çözüldü/açık/takip) ve musteri ruh hali/memnuniyet (sentiment) yansir.
+# Boylece 360 ve raporlar "ne konusuldu"nun yani sira "nasil sonuclandi"yi
+# da gosterir.
+_V4_STATEMENTS: List[str] = [
+    "ALTER TABLE merchant_contacts ADD COLUMN outcome   TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE merchant_contacts ADD COLUMN sentiment TEXT NOT NULL DEFAULT ''",
+]
+
+
 BUSINESS_MIGRATIONS: List[Migration] = [
     (1, "business_schema", _V1_STATEMENTS),
     (2, "crm_fields", _V2_STATEMENTS),
     (3, "crm_contact_source", _V3_STATEMENTS),
+    (4, "crm_contact_outcome", _V4_STATEMENTS),
 ]

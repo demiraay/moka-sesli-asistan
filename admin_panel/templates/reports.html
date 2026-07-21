@@ -14,10 +14,14 @@
 
   <section class="chart-card print-hide" style="margin-top: 4px;">
     <div class="customer-filters">
+      <span class="demand-label">Dönem:</span>
+      <a class="button {{ 'secondary' if period != 3 }}" href="{{ url_for('reports', period=3) }}">Son 3 ay</a>
+      <a class="button {{ 'secondary' if period != 6 }}" href="{{ url_for('reports', period=6) }}">Son 6 ay</a>
+      <span style="width:16px"></span>
       <span class="demand-label">Dışa aktar:</span>
       <a class="button secondary" href="{{ url_for('export_report_csv') }}">CSV indir</a>
       {% if pdf_available %}
-      <a class="button" href="{{ url_for('portfolio_pdf_report') }}">PDF indir</a>
+      <a class="button" href="{{ url_for('portfolio_pdf_report', period=period) }}">PDF indir</a>
       {% endif %}
       <span style="flex:1"></span>
       <a class="button secondary" href="{{ url_for('customers') }}">← Müşteriler</a>
@@ -32,6 +36,11 @@
     <article class="stat-card highlight">
       <span>Bu ay ciro</span>
       <strong>{{ summary.total_last_month_try | tl }}</strong>
+      {% if summary.period_change_pct %}
+      <em class="trend {{ 'up' if summary.period_change_pct > 0 else 'down' }}">
+        Son {{ summary.period_months }} ay {{ '▲' if summary.period_change_pct > 0 else '▼' }} %{{ summary.period_change_pct | abs }}
+      </em>
+      {% endif %}
     </article>
     <article class="stat-card">
       <span>Bu ay komisyon</span>

@@ -83,6 +83,13 @@
         <article class="note-chip"><span>Toplam oturum</span><strong>{{ perf.total_sessions }}</strong></article>
         <article class="note-chip"><span>Ortalama tur/oturum</span><strong>{{ perf.avg_turns_per_session }}</strong></article>
       </div>
+      <h3 style="margin: 16px 0 8px; font-size: 0.95rem;">AI Performans &amp; Maliyet</h3>
+      <div class="notes-grid">
+        <article class="note-chip"><span>Ort. yanıt süresi</span><strong>{{ (perf.avg_latency_ms / 1000) | round(1) }} sn</strong></article>
+        <article class="note-chip"><span>Ort. araç iterasyonu</span><strong>{{ perf.avg_iterations }}</strong></article>
+        <article class="note-chip"><span>Ort. token/tur</span><strong>{{ perf.avg_tokens_per_turn }}</strong></article>
+        <article class="note-chip"><span>Toplam token</span><strong>{{ '{:,}'.format(perf.total_tokens).replace(',', '.') }}</strong></article>
+      </div>
       {% if perf.channel_counts %}
         <div class="channel-pills" style="margin-top: 12px;">
           {% for channel, count in perf.channel_counts.items() %}

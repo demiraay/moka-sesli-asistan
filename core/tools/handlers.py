@@ -773,7 +773,7 @@ def find_dormant_merchants(ctx: ToolContext, args: Dict[str, Any]) -> str:
 
 _CARD_FIELDS = ("owner_name", "business_name", "issue", "amount_mentioned_try",
                 "date_mentioned", "terminal_id", "card_last4", "mood",
-                "upsell_opportunity")
+                "upsell_opportunity", "resolution")
 
 
 # Arac argumani -> kart alani. Model zaten bu degerleri YAPISAL olarak
@@ -823,6 +823,8 @@ def mirror_args_to_card(ctx: ToolContext, tool_name: str, args: Dict[str, Any]) 
             "card_last4": {"type": "string"},
             "mood": {"type": "string", "enum": ["sakin", "gergin", "kizgin"]},
             "upsell_opportunity": {"type": "string"},
+            "resolution": {"type": "string", "enum": ["çözüldü", "açık", "takip"],
+                           "description": "Konunun durumu: çözüldü / açık / takip gerekiyor"},
         },
     },
     panel_label="hafıza güncellendi",
@@ -888,6 +890,40 @@ def record_crm_note(ctx: ToolContext, args: Dict[str, Any]) -> str:
         ctx.merchant_id, category, note[:300],
         session_id=ctx.user_profile.get("session_id", ""), channel=ctx.channel)
     return f"CRM notu kaydedildi ({category}): {note[:60]}"
+
+
+@tool(
+    name="set_contact_preference",
+    description="Musteri 'bana X'ten ulasin/yazin' gibi bir ILETISIM TERCIHI "
+                "belirtince tercih ettigi kanali kalici gunceller (telefon, "
+                "whatsapp, email, sms). Yalnizca acik bir tercih belirtildiginde cagir.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "channel": {"type": "string",
+                        "enum": ["telefon", "whatsapp", "email", "sms"]},
+        },
+        "required": ["channel"],
+    },
+    kind=SIDE_EFFECT,
+    panel_label="iletişim tercihi güncellendi",
+    once_per_turn=True,
+    requires_merchant=True,
+)
+def set_contact_preference(ctx: ToolContext, args: Dict[str, Any]) -> str:
+    """Musteri iletisim tercihini merchant kaydina yazar + CRM notu birakir."""
+    if not ctx.user_profile.get("identity_verified"):
+        return "Kimlik dogrulanmadi; tercih guncellenmedi."
+    channel = str(args.get("channel") or "").strip()
+    if channel not in ("telefon", "whatsapp", "email", "sms"):
+        return "HATA: gecersiz kanal."
+    if not ctx.merchant_id:
+        return "HATA: isletme belirsiz."
+    ctx.repo.update_preferred_channel(ctx.merchant_id, channel)
+    ctx.repo.add_insight(
+        ctx.merchant_id, "tercih", f"İletişim tercihi: {channel}",
+        session_id=ctx.user_profile.get("session_id", ""), channel=ctx.channel)
+    return f"İletişim tercihi güncellendi: {channel}"
 
 
 # ------------------------------------------------------------- yardimcilar

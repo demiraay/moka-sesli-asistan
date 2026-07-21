@@ -253,9 +253,15 @@ def create_app(
                 flash(str(error), "error")
             return redirect(url_for("tasks"))
 
+        # Handoff/lead takipleri (admin) + CRM takipleri (uyuyan/açık konuşma).
+        followups = admin_store.get_followup_tasks()
+        try:
+            followups = followups + active_orchestrator.merchant_data.list_followup_merchants()
+        except Exception:
+            pass
         return render_template(
             "tasks.html",
-            followups=admin_store.get_followup_tasks(),
+            followups=followups,
             manual_tasks=admin_store.list_tasks(include_done=True),
         )
 
@@ -681,11 +687,13 @@ def create_app(
     def reports():
         """Musteri tabanli rapor ekrani: portfoy grafikleri + top listeler."""
         repo = active_orchestrator.merchant_data
+        period = 3 if request.args.get("period") == "3" else 6
         return render_template(
             "reports.html",
-            summary=repo.portfolio_summary(),
+            summary=repo.portfolio_summary(months=period),
             customers=repo.list_customers(),
-            pdf_available=pdf_report.is_available())
+            pdf_available=pdf_report.is_available(),
+            period=period)
 
     @app.route("/admin/reports/report.pdf")
     def portfolio_pdf_report():
@@ -694,8 +702,10 @@ def create_app(
         if not pdf_report.is_available():
             flash("PDF motoru (pdflatex) bulunamadı — CSV'yi kullanabilirsiniz.", "error")
             return redirect(url_for("reports"))
+        period = 3 if request.args.get("period") == "3" else 6
         try:
-            pdf = pdf_report.portfolio_pdf(repo.portfolio_summary(), project_name=_project_name())
+            pdf = pdf_report.portfolio_pdf(repo.portfolio_summary(months=period),
+                                           project_name=_project_name())
         except pdf_report.PdfCompileError:
             flash("PDF oluşturulamadı.", "error")
             return redirect(url_for("reports"))

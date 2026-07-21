@@ -14,7 +14,7 @@ EXPECTED_TOOLS = {
     "get_settlement_status", "find_transaction", "troubleshoot_pos", "explain_fees",
     "send_statement", "create_payment_link", "recommend_offer", "trigger_handoff",
     "answer_general", "update_customer_card", "find_dormant_merchants",
-    "record_crm_note",
+    "record_crm_note", "set_contact_preference",
 }
 
 

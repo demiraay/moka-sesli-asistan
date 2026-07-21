@@ -470,15 +470,16 @@ class MerchantRepository:
             })
         return customers
 
-    def portfolio_summary(self) -> Dict[str, Any]:
+    def portfolio_summary(self, months: int = 6) -> Dict[str, Any]:
         """Portfoy-geneli agregat (eksik olan tek-sorguda ozet). M-TEST HARIC.
 
-        Aylik toplamlar dogrudan SQL'de; dagilimlar list_customers'tan Python'da
-        toplulastirilir (18 satir).
+        months: rapor donemi (3 veya 6 ay). Grafikler son `months` aya kirpilir
+        ve bir onceki ayni uzunluktaki donemle karsilastirilir (period_change_pct).
         """
         from collections import Counter
         from core.demo_profile import TEST_MERCHANT_ID
 
+        months = 3 if int(months) <= 3 else 6
         customers = self.list_customers()
 
         # Aylik ciro + tahmini komisyon (month_offset bazinda, kronolojik)
@@ -492,18 +493,25 @@ class MerchantRepository:
             " WHERE mmv.merchant_id != ? "
             " GROUP BY mmv.month_offset ORDER BY mmv.month_offset ASC",
             (TEST_MERCHANT_ID,))
-        monthly_totals = [
+        monthly_all = [
             {"month": r["ym"], "volume_try": round(r["vol"] or 0),
              "commission_try": round(r["comm"] or 0)}
             for r in monthly
         ]
+        # Secilen doneme kirp + onceki ayni uzunluktaki donemle karsilastir.
+        monthly_totals = monthly_all[-months:]
+        this_period = sum(m["volume_try"] for m in monthly_totals)
+        prev_slice = monthly_all[-2 * months:-months]
+        prev_period = sum(m["volume_try"] for m in prev_slice)
+        period_change_pct = (round((this_period - prev_period) / prev_period * 100, 1)
+                             if prev_period else 0.0)
 
-        # Aylik islem adedi (cozulmus ts uzerinden)
+        # Aylik islem adedi (cozulmus ts uzerinden), ayni doneme kirpilmis
         txn_rows = self._query(
             "SELECT substr(ts, 1, 7) AS ym, COUNT(*) AS c FROM transactions "
             "WHERE merchant_id != ? AND ts != '' GROUP BY ym ORDER BY ym ASC",
             (TEST_MERCHANT_ID,))
-        txn_volume_by_month = [{"month": r["ym"], "count": r["c"]} for r in txn_rows]
+        txn_volume_by_month = [{"month": r["ym"], "count": r["c"]} for r in txn_rows][-months:]
 
         def _counter(field: str) -> Dict[str, int]:
             return dict(Counter(c[field] for c in customers if c.get(field)))
@@ -517,6 +525,8 @@ class MerchantRepository:
 
         return {
             "merchant_count": len(customers),
+            "period_months": months,
+            "period_change_pct": period_change_pct,
             "total_last_month_try": sum(c["last_month_try"] for c in customers),
             "total_commission_try": (monthly_totals[-1]["commission_try"]
                                      if monthly_totals else 0),
@@ -532,6 +542,45 @@ class MerchantRepository:
             "top_growing": top_growing,
             "top_dormant": top_dormant,
         }
+
+    def list_followup_merchants(self) -> List[Dict[str, Any]]:
+        """Otomatik takip gorevleri: uyuyan musteriler + acik/takip durumlu son
+        konusmalar. Panel gorev listesine (admin handoff'lariyla birlikte) girer.
+        """
+        tasks: List[Dict[str, Any]] = []
+
+        # 1) Uyuyan isletmeler — kurtarma aramasi
+        for merchant in self.list_dormant_merchants():
+            manager = merchant.get("account_manager") or "atanmamış"
+            tasks.append({
+                "kind": "dormant", "priority": "high",
+                "merchant_id": merchant["merchant_id"],
+                "title": f"{merchant['business_name']} — uyuyan, kurtarma araması",
+                "detail": (f"Aylık ~{merchant.get('lost_volume_try', 0)} TL hacim kaybı"
+                           f" · temsilci: {manager}"),
+            })
+
+        # 2) Cozulmemis / takip bekleyen son konusmalar (D1 outcome alani)
+        seen = {task["merchant_id"] for task in tasks}
+        for row in self._query(
+                "SELECT mc.merchant_id, mc.subject, mc.outcome, "
+                "       m.business_name, m.account_manager "
+                "  FROM merchant_contacts mc "
+                "  JOIN merchants m ON m.merchant_id = mc.merchant_id "
+                " WHERE mc.outcome IN ('açık', 'takip') AND mc.source = 'ai' "
+                " ORDER BY mc.contacted_at DESC"):
+            if row["merchant_id"] in seen:
+                continue
+            seen.add(row["merchant_id"])
+            manager = row.get("account_manager") or "atanmamış"
+            tasks.append({
+                "kind": "open", "priority": "high" if row["outcome"] == "açık" else "medium",
+                "merchant_id": row["merchant_id"],
+                "title": (f"{row['business_name']} — {row['outcome']} konu takibi: "
+                          f"{row['subject']}"),
+                "detail": f"Konuşma {row['outcome']} kaldı · temsilci: {manager}",
+            })
+        return tasks
 
     def get_customer_360(self, merchant_id: str) -> Optional[Dict[str, Any]]:
         """Tek isletmenin is-tarafi 360 gorunumu (yalniz moka.sqlite3).
@@ -593,12 +642,14 @@ class MerchantRepository:
 
     def upsert_session_contact(self, merchant_id: str, session_id: str, *,
                                channel: str = "", subject: str = "", note: str = "",
-                               rep: str = "AI", when_token: Optional[str] = None) -> None:
+                               rep: str = "AI", outcome: str = "", sentiment: str = "",
+                               when_token: Optional[str] = None) -> None:
         """Bir OTURUMUN temas kaydini olusturur/gunceller (source='ai').
 
         Ayni session_id ile tekrar cagrilinca YENI satir acmaz, mevcut kaydi
         gunceller — boylece bir konusma = tek temas kaydi, icerigi konusma
-        ilerledikce zenginlesir. 360 zaman cizgisinde canli konusma gorunur.
+        ilerledikce zenginlesir. outcome (çözüm durumu) ve sentiment (ruh hali)
+        konusma ilerledikce guncellenir; 360/rapor "nasil sonuclandi"yi gosterir.
         """
         if not session_id:
             return
@@ -612,14 +663,28 @@ class MerchantRepository:
             if existing:
                 connection.execute(
                     "UPDATE merchant_contacts SET channel = ?, subject = ?, note = ?, "
-                    "contacted_token = ?, contacted_at = ? WHERE id = ?",
-                    (channel, subject, note, token, resolved, existing["id"]))
+                    "outcome = ?, sentiment = ?, contacted_token = ?, contacted_at = ? "
+                    "WHERE id = ?",
+                    (channel, subject, note, outcome, sentiment, token, resolved,
+                     existing["id"]))
             else:
                 connection.execute(
                     "INSERT INTO merchant_contacts (merchant_id, channel, direction, "
-                    "subject, note, rep, contacted_token, contacted_at, session_id, source) "
-                    "VALUES (?, ?, 'inbound', ?, ?, ?, ?, ?, ?, 'ai')",
-                    (merchant_id, channel, subject, note, rep, token, resolved, session_id))
+                    "subject, note, rep, outcome, sentiment, contacted_token, "
+                    "contacted_at, session_id, source) "
+                    "VALUES (?, ?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?, 'ai')",
+                    (merchant_id, channel, subject, note, rep, outcome, sentiment,
+                     token, resolved, session_id))
+
+    def update_preferred_channel(self, merchant_id: str, channel: str) -> None:
+        """Musteri iletisim tercihi degisikligini kalici yazar (CRM guncel kalir)."""
+        allowed = {"telefon", "whatsapp", "email", "sms"}
+        if channel not in allowed:
+            return
+        with db.session(self.db_path) as connection:
+            connection.execute(
+                "UPDATE merchants SET preferred_channel = ? WHERE merchant_id = ?",
+                (channel, merchant_id))
 
     def add_insight(self, merchant_id: str, category: str, note: str, *,
                     session_id: str = "", channel: str = "", rep: str = "AI",

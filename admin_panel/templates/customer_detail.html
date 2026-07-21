@@ -169,8 +169,12 @@
           <div class="timeline-main">
             <strong>{{ c.subject }}
               {% if c.source == 'ai' %}<span class="temp-badge cold" style="font-size:0.6rem;">AI · canlı</span>{% endif %}
+              {% if c.outcome %}
+                {% set oc = 'cold' if c.outcome == 'çözüldü' else ('warm' if c.outcome == 'takip' else 'hot') %}
+                <span class="temp-badge {{ oc }}" style="font-size:0.6rem;">{{ c.outcome }}</span>
+              {% endif %}
             </strong>
-            <small style="color:var(--muted);">{{ (c.contacted_at or '')[:10] }} · {{ c.channel }} · {{ c.rep or '—' }}</small>
+            <small style="color:var(--muted);">{{ (c.contacted_at or '')[:10] }} · {{ c.channel }} · {{ c.rep or '—' }}{% if c.sentiment %} · {{ c.sentiment }}{% endif %}</small>
             {% if c.note %}<p>{{ c.note }}</p>{% endif %}
             {% if c.source in ['ai', 'insight'] and c.session_id %}
               <a href="{{ url_for('conversation_detail', session_id=c.session_id) }}" style="font-size:0.78rem; color:var(--accent);">↗ bu konuşmayı aç</a>

@@ -19,7 +19,9 @@
               <strong>{{ task.title }}</strong>
               <small>{{ task.detail }}</small>
             </div>
-            {% if task.user_id %}
+            {% if task.merchant_id %}
+              <a class="button secondary compact" href="{{ url_for('customer_detail', merchant_id=task.merchant_id) }}">İşletme 360</a>
+            {% elif task.user_id %}
               <a class="button secondary compact" href="{{ url_for('user_conversations', user_id=task.user_id) }}">Müşteri</a>
             {% endif %}
           </div>

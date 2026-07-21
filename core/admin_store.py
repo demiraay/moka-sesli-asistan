@@ -2520,6 +2520,8 @@ class AdminStore:
 
         handoff_sessions = set()
         tool_usage: Dict[str, int] = {}
+        # AI performans/maliyet toplayicilari (observability)
+        iter_sum = iter_n = tokens_sum = lat_sum = lat_n = 0
         for turn in turns:
             try:
                 router = json.loads(turn.get("router_decision_json") or "{}")
@@ -2527,6 +2529,20 @@ class AdminStore:
                 router = {}
             tool = router.get("tool") or "bilinmiyor"
             tool_usage[tool] = tool_usage.get(tool, 0) + 1
+
+            iterations = router.get("iterations")
+            if isinstance(iterations, int):
+                iter_sum += iterations
+                iter_n += 1
+            usage = router.get("usage") or {}
+            tokens_sum += int(usage.get("total_tokens")
+                              or (usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0))
+                              or 0)
+            latency = router.get("latency_ms")
+            if isinstance(latency, (int, float)):
+                lat_sum += latency
+                lat_n += 1
+
             try:
                 context = json.loads(turn.get("context_json") or "{}")
             except json.JSONDecodeError:
@@ -2548,6 +2564,11 @@ class AdminStore:
             "handoff_rate_pct": round(len(handoff_sessions) / total_sessions * 100) if total_sessions else 0,
             "containment_pct": round((1 - len(handoff_sessions) / total_sessions) * 100) if total_sessions else 0,
             "channel_counts": channel_counts,
+            # AI performans/maliyet (observability)
+            "avg_iterations": round(iter_sum / iter_n, 2) if iter_n else 0,
+            "avg_latency_ms": round(lat_sum / lat_n) if lat_n else 0,
+            "total_tokens": tokens_sum,
+            "avg_tokens_per_turn": round(tokens_sum / len(turns)) if turns else 0,
         }
         tool_usage_rows = sorted(
             [{"tool": tool, "count": count} for tool, count in tool_usage.items()],

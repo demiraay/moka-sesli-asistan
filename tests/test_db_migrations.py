@@ -74,11 +74,11 @@ class TestBusinessSchemaV2(unittest.TestCase):
         self.db_path = Path(self.temp_dir.name) / "moka.sqlite3"
 
     def test_migrates_from_zero_to_latest(self):
-        self.assertEqual(db.migrate(self.db_path, BUSINESS_MIGRATIONS), 3)
+        self.assertEqual(db.migrate(self.db_path, BUSINESS_MIGRATIONS), 4)
 
     def test_second_run_is_noop(self):
         db.migrate(self.db_path, BUSINESS_MIGRATIONS)
-        self.assertEqual(db.migrate(self.db_path, BUSINESS_MIGRATIONS), 3)
+        self.assertEqual(db.migrate(self.db_path, BUSINESS_MIGRATIONS), 4)
 
     def test_v3_adds_source_and_session_columns(self):
         db.migrate(self.db_path, BUSINESS_MIGRATIONS)
@@ -118,9 +118,9 @@ class TestBusinessSchemaV2(unittest.TestCase):
     def test_upgrade_from_v1_only_is_idempotent(self):
         """Sadece v1'de olan DB en son surume yukseltilebilir (ALTER yeniden kosmaz)."""
         db.migrate(self.db_path, BUSINESS_MIGRATIONS[:1])   # yalniz v1
-        self.assertEqual(db.migrate(self.db_path, BUSINESS_MIGRATIONS), 3)
+        self.assertEqual(db.migrate(self.db_path, BUSINESS_MIGRATIONS), 4)
         # Ikinci tam kosu da no-op
-        self.assertEqual(db.migrate(self.db_path, BUSINESS_MIGRATIONS), 3)
+        self.assertEqual(db.migrate(self.db_path, BUSINESS_MIGRATIONS), 4)
 
 
 class TestConnectionPragmas(unittest.TestCase):

@@ -482,14 +482,20 @@ class AgentOrchestrator:
                    or "Görüşme")
         note = ai_summary if (ai_summary and "kayda değer" not in ai_summary) \
             else (ai_notes.get("issue") or subject)
+
+        # Cozum durumu ve ruh hali/memnuniyet: "ne konusuldu" yaninda "nasil
+        # sonuclandi" da 360/rapora yansir. handoff varsa durum "takip".
+        card = user_profile.get("card") or {}
+        outcome = card.get("resolution") or ("takip" if ai_notes.get("handoff_required") else "")
+        sentiment = card.get("mood") or ""
         self.merchant_data.upsert_session_contact(
             merchant["merchant_id"], session_id,
-            channel=channel, subject=str(subject)[:80], note=str(note)[:300])
+            channel=channel, subject=str(subject)[:80], note=str(note)[:300],
+            outcome=str(outcome)[:20], sentiment=str(sentiment)[:20])
 
         # Konusmada cikan SATIS FIRSATI: admin ai_notes'ta kaliyordu, merchant
         # CRM'e (360/rapor) akmiyordu. Ayri bir 'fırsat' icgorusu olarak dusur
         # (oturum basina tek, guncellenir).
-        card = user_profile.get("card") or {}
         opportunity = card.get("upsell_opportunity")
         if opportunity:
             self.merchant_data.upsert_session_insight(
@@ -1284,6 +1290,7 @@ class AgentOrchestrator:
                 "context": response_builder.build()
             }
 
+        _turn_start = time.monotonic()   # tur gecikmesi (observability)
         current_history = self._get_conversation_history(user_id, channel)
         is_first_turn = len(current_history) == 0
         user_profile = self._get_user_profile(user_id)
@@ -1381,6 +1388,11 @@ class AgentOrchestrator:
         if AGENT_LOOP_ENABLED:
             self._get_planner_transcript(user_id, channel).append(
                 {"role": "assistant", "content": final_response})
+
+        # Tur gecikmesini router_decision'a yaz — log_turn bunu router_decision_json
+        # olarak saklar, get_analytics_report AI performans metriklerini turetir.
+        if isinstance(router_decision, dict):
+            router_decision["latency_ms"] = round((time.monotonic() - _turn_start) * 1000)
 
         ai_notes = self._build_ai_notes_payload(
             user_profile=user_profile,

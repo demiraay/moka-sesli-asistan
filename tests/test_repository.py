@@ -405,6 +405,25 @@ class TestCustomerCRM(unittest.TestCase):
         self.assertEqual(len(opps), 1)                 # tek firsat kaydi
         self.assertEqual(opps[0]["note"], "crm-test-POS Pro ilgisi v2")
 
+    def test_session_contact_outcome_and_sentiment(self):
+        """Cozum durumu + ruh hali temas kaydina yansir."""
+        sid = "crm-test-outcome"
+        self.repo.upsert_session_contact("M-1007", sid, subject="Cihaz arızası",
+            note="crm-test", outcome="çözüldü", sentiment="sakin")
+        row = [c for c in self.repo.list_contacts("M-1007", limit=99)
+               if c.get("session_id") == sid][0]
+        self.assertEqual(row["outcome"], "çözüldü")
+        self.assertEqual(row["sentiment"], "sakin")
+
+    def test_update_preferred_channel(self):
+        before = self.repo.get_merchant("M-1013")["preferred_channel"]
+        self.addCleanup(lambda: self.repo.update_preferred_channel("M-1013", before)
+                        if before in ("telefon", "whatsapp", "email", "sms") else None)
+        self.repo.update_preferred_channel("M-1013", "sms")
+        self.assertEqual(self.repo.get_merchant("M-1013")["preferred_channel"], "sms")
+        self.repo.update_preferred_channel("M-1013", "gecersiz")   # yok sayilir
+        self.assertEqual(self.repo.get_merchant("M-1013")["preferred_channel"], "sms")
+
     def test_insights_excluded_from_seed_count(self):
         """Canli kayitlar source='seed' degil; seed sayimina karismaz."""
         before = self.repo._query(
