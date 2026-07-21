@@ -489,6 +489,22 @@ body::before {
   border-radius: 999px;
   letter-spacing: 0.2px;
 }
+/* Arac zinciri: cok adimli agent loop'ta bir turda birden fazla arac calisir.
+   Ok, modelin bir aracin sonucunu gorup sonrakine gectigini gosterir. */
+.tool-arrow {
+  font-size: 10.5px;
+  color: rgba(159, 212, 255, 0.55);
+  padding: 0 1px;
+}
+.iteration-badge {
+  font-size: 10.5px;
+  background: rgba(120, 220, 170, 0.12);
+  border: 1px solid rgba(120, 220, 170, 0.32);
+  color: #8fe3bd;
+  padding: 2.5px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.2px;
+}
 .latency-badge {
   font-size: 10.5px;
   color: var(--muted);
@@ -677,4 +693,16 @@ body::before {
   30% { transform: rotate(-6deg); }
   40% { transform: rotate(6deg); }
   50% { transform: rotate(0); }
+}
+
+/* Akan cevap balonu: metin uretildikce yazilir. Yanip sonen imlec, yazinin
+   devam ettigini gosterir. */
+.bubble.streaming::after {
+  content: "▌";
+  margin-left: 2px;
+  opacity: 0.55;
+  animation: caret 1s steps(2, start) infinite;
+}
+@keyframes caret {
+  to { opacity: 0; }
 }

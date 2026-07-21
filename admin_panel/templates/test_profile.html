@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Gösterim Profili — {{ panel_project }}{% endblock %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Gösterim Profili</h1>
+    <p>Sunumda kullanılacak örnek işletme. Buradaki bilgileri değiştirin, sesli
+       aramada <strong>{{ profile.business_name }}</strong> olarak arayın —
+       asistan bu kimlikle konuşur.</p>
+  </div>
+
+  <section class="chart-card" style="margin-top: 18px;">
+    <form method="post" class="profile-form">
+      <h2 class="form-section-title">İşletme</h2>
+      <div class="form-grid">
+        <label>İşletme adı
+          <input type="text" name="business_name" value="{{ profile.business_name }}" maxlength="80" required>
+        </label>
+        <label>Yetkili
+          <input type="text" name="owner_name" value="{{ profile.owner_name }}" maxlength="80" required>
+        </label>
+        <label>Hitap <small>asistan böyle seslenir</small>
+          <input type="text" name="salutation" value="{{ profile.salutation }}" maxlength="40" placeholder="Ahmet Bey">
+        </label>
+        <label>Sektör
+          <input type="text" name="sector" value="{{ profile.sector }}" maxlength="60">
+        </label>
+        <label>Şehir
+          <input type="text" name="city" value="{{ profile.city }}" maxlength="40">
+        </label>
+        <label>İlçe
+          <input type="text" name="district" value="{{ profile.district }}" maxlength="40">
+        </label>
+        <label>Telefon <small>WhatsApp bu numarayla eşleşir</small>
+          <input type="text" name="phone" value="{{ profile.phone }}" maxlength="20">
+        </label>
+        <label>E-posta <small>ekstre buraya gider</small>
+          <input type="text" name="email" value="{{ profile.email }}" maxlength="80">
+        </label>
+        <label>Maskeli IBAN
+          <input type="text" name="iban_masked" value="{{ profile.iban_masked }}" maxlength="40">
+        </label>
+        <label>Komisyon planı
+          <select name="commission_plan_id">
+            {% for plan in plans %}
+              <option value="{{ plan.plan_id }}"
+                {% if plan.plan_id == profile.commission_plan_id %}selected{% endif %}>
+                {{ plan.name }} — %{{ plan.rate_pct }}{% if plan.retention_only %} (geri kazanım){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+
+      <h2 class="form-section-title">Ürünler</h2>
+      <div class="checkbox-row">
+        {% for key, label in [('fiziksel_pos', 'Fiziksel POS'), ('sanal_pos', 'Sanal POS'), ('odeme_linki', 'Ödeme Linki')] %}
+          <label class="checkbox-chip">
+            <input type="checkbox" name="products" value="{{ key }}"
+              {% if key in profile.products %}checked{% endif %}>
+            <span>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <h2 class="form-section-title">POS cihazı</h2>
+      <div class="form-grid">
+        <label>Model
+          <input type="text" name="device_model" value="{{ profile.device_model }}" maxlength="40">
+        </label>
+        <label>Durum
+          <select name="device_status">
+            <option value="aktif" {% if profile.device_status == 'aktif' %}selected{% endif %}>aktif</option>
+            <option value="pasif" {% if profile.device_status == 'pasif' %}selected{% endif %}>pasif</option>
+          </select>
+        </label>
+        <label>Cihaz notu <small>örn. "3 gündür bağlantı yok"</small>
+          <input type="text" name="device_note" value="{{ profile.device_note }}" maxlength="120">
+        </label>
+      </div>
+
+      <h2 class="form-section-title">Aylık ciro <small>eskiden yeniye; sonuncusu bu ay</small></h2>
+      <p class="muted-line" style="margin-top: -6px;">
+        İşlem ve hakediş verisi bu rakamlardan üretilir. Son ay, önceki 3 ayın
+        ortalamasının %30'unun altına düşerse işletme <strong>uyuyan</strong> sayılır
+        — geri kazanım senaryosunu böyle tetikleyebilirsiniz.
+      </p>
+      <div class="volume-row">
+        {% for volume in profile.volumes %}
+          <label>{{ loop.index }}. ay
+            <input type="number" name="volumes" value="{{ volume }}" min="0" step="1000">
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="button">Kaydet ve veriyi yeniden üret</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="chart-card" style="margin-top: 18px;">
+    <h2 class="form-section-title">Üretilen veri</h2>
+    <p class="muted-line" style="margin-top: -6px;">
+      Asistanın söyleyeceği rakamlar bunlar; brüt = işlemler toplamı,
+      komisyon = plan oranı, net = brüt − komisyon.
+    </p>
+    <div class="stats-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px;">
+      <article class="stat-card">
+        <span>Bu ay ciro</span>
+        <strong>{{ summary.gross_try | tl }}</strong>
+        <em class="trend">komisyon {{ summary.commission_try | tl }} (%{{ summary.rate_pct }})</em>
+      </article>
+      <article class="stat-card">
+        <span>İşlem kaydı</span>
+        <strong>{{ txn_count }}</strong>
+      </article>
+      <article class="stat-card">
+        <span>Hakediş partisi</span>
+        <strong>{{ settlements | length }}</strong>
+      </article>
+    </div>
+
+    {% if settlements %}
+    <table class="data-table" style="margin-top: 14px;">
+      <thead>
+        <tr><th>Parti</th><th>Tarih</th><th>Brüt</th><th>Komisyon</th><th>Net</th><th>Durum</th></tr>
+      </thead>
+      <tbody>
+        {% for s in settlements %}
+        <tr>
+          <td>{{ s.batch_id }}</td>
+          <td>{{ s.batch_date }}</td>
+          <td>{{ s.gross_try | round | int | tl }}</td>
+          <td>{{ s.commission_try | round | int | tl }}</td>
+          <td>{{ s.net_try | round | int | tl }}</td>
+          <td>{{ s.status }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <p class="muted-line" style="margin-top: 14px;">
+      Sesli aramayı bu profille başlatmak için:
+      <a href="{{ url_for('call_page', merchant_id=test_merchant_id) }}">Sesli Arama →</a>
+    </p>
+  </section>
+{% endblock %}

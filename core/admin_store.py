@@ -8,7 +8,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
+from core import db
 from core.config import Config
+from core.migrations.admin import ADMIN_MIGRATIONS
 
 
 class AdminStore:
@@ -21,211 +23,25 @@ class AdminStore:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.db_path)
-        connection.row_factory = sqlite3.Row
+        # core.db.connect: WAL + busy_timeout + foreign_keys=ON (bkz. core/db.py).
+        connection = db.connect(self.db_path)
         try:
             yield connection
             connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
         finally:
             connection.close()
 
     def _ensure_schema(self) -> None:
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS app_settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS conversation_sessions (
-                    session_id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    channel TEXT NOT NULL DEFAULT 'default',
-                    created_at TEXT NOT NULL,
-                    last_message_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS conversation_turns (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL,
-                    channel TEXT NOT NULL DEFAULT 'default',
-                    user_input TEXT NOT NULL,
-                    agent_response TEXT NOT NULL,
-                    router_decision_json TEXT NOT NULL,
-                    context_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (session_id) REFERENCES conversation_sessions(session_id)
-                )
-                """
-            )
-            self._ensure_column(connection, "conversation_sessions", "channel", "TEXT NOT NULL DEFAULT 'default'")
-            self._ensure_column(connection, "conversation_turns", "channel", "TEXT NOT NULL DEFAULT 'default'")
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS user_ai_notes (
-                    user_id TEXT PRIMARY KEY,
-                    ai_summary TEXT NOT NULL,
-                    ai_notes_json TEXT NOT NULL,
-                    manual_notes TEXT NOT NULL DEFAULT '',
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            self._ensure_column(connection, "user_ai_notes", "stage", "TEXT NOT NULL DEFAULT 'new'")
-            self._ensure_column(connection, "user_ai_notes", "ai_paused", "INTEGER NOT NULL DEFAULT 0")
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS outbox (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    sender TEXT NOT NULL DEFAULT 'panel',
-                    status TEXT NOT NULL DEFAULT 'pending',
-                    created_at TEXT NOT NULL,
-                    sent_at TEXT
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS lead_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    payload TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS briefings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    content TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    title TEXT NOT NULL,
-                    user_id TEXT NOT NULL DEFAULT '',
-                    due_at TEXT,
-                    done INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    done_at TEXT
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS offers (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    inventory_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL DEFAULT '',
-                    plan_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS unit_reservations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    inventory_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL DEFAULT '',
-                    kind TEXT NOT NULL,
-                    amount_try INTEGER,
-                    note TEXT NOT NULL DEFAULT '',
-                    state TEXT NOT NULL DEFAULT 'active',
-                    expires_at TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS listing_photos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    scope TEXT NOT NULL,
-                    ref_id TEXT NOT NULL,
-                    filename TEXT NOT NULL,
-                    original_name TEXT NOT NULL DEFAULT '',
-                    is_cover INTEGER NOT NULL DEFAULT 0,
-                    sort_order INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_listing_photos_ref ON listing_photos(scope, ref_id)"
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS listing_price_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    inventory_id TEXT NOT NULL,
-                    old_price INTEGER,
-                    new_price INTEGER NOT NULL,
-                    source TEXT NOT NULL DEFAULT 'panel',
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS listing_status_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    inventory_id TEXT NOT NULL,
-                    from_status TEXT NOT NULL,
-                    to_status TEXT NOT NULL,
-                    source TEXT NOT NULL DEFAULT 'panel',
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_listing_status_log_to ON listing_status_log(to_status, created_at)"
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS ai_blocklist (
-                    user_id TEXT PRIMARY KEY,
-                    note TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sales_profile (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    consultant_name TEXT NOT NULL DEFAULT '',
-                    consultant_title TEXT NOT NULL DEFAULT '',
-                    phone_number TEXT NOT NULL DEFAULT '',
-                    whatsapp_number TEXT NOT NULL DEFAULT '',
-                    office_name TEXT NOT NULL DEFAULT '',
-                    office_address TEXT NOT NULL DEFAULT '',
-                    maps_url TEXT NOT NULL DEFAULT '',
-                    latitude TEXT NOT NULL DEFAULT '',
-                    longitude TEXT NOT NULL DEFAULT '',
-                    location_label TEXT NOT NULL DEFAULT '',
-                    auto_share_whatsapp_location INTEGER NOT NULL DEFAULT 0,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
+        """Numarali migration'lari uygular (bkz. core/migrations/admin.py).
+
+        Eskiden burada elle yazilmis CREATE TABLE / ALTER TABLE zinciri vardi;
+        versiyon takibi ve geri alma yoktu.
+        """
+        db.migrate(self.db_path, ADMIN_MIGRATIONS)
+
     def _ensure_column(self, connection: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
         columns = {
             row["name"]
@@ -299,8 +115,8 @@ class AdminStore:
                     FROM conversation_turns AS handoff_turns
                     WHERE handoff_turns.session_id = sessions.session_id
                       AND (
-                          LOWER(handoff_turns.router_decision_json) LIKE '%trigger_handoff%'
-                          OR LOWER(handoff_turns.context_json) LIKE '%"required": true%'
+                          handoff_turns.handoff_required = 1
+                          OR LOWER(handoff_turns.tool_names) LIKE '%trigger_handoff%'
                       )
                 )
                 """
@@ -385,9 +201,11 @@ class AdminStore:
                     agent_response,
                     router_decision_json,
                     context_json,
-                    created_at
+                    created_at,
+                    handoff_required,
+                    tool_names
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -397,8 +215,36 @@ class AdminStore:
                     json.dumps(router_decision, ensure_ascii=False),
                     json.dumps(context, ensure_ascii=False),
                     timestamp,
+                    self._handoff_flag(context),
+                    self._tool_names(router_decision),
                 ),
             )
+
+    @staticmethod
+    def _handoff_flag(context: Dict[str, Any]) -> int:
+        """context_json'daki handoff durumunu sorgulanabilir sutuna cevirir.
+
+        Panel eskiden bunu ham SQL LIKE '%"required": true%' ile ariyordu; o
+        sorgu json.dumps'in ayrac boslugu degisirse sessizce kaciriyordu.
+        """
+        handoff = context.get("handoff") if isinstance(context, dict) else None
+        return 1 if isinstance(handoff, dict) and handoff.get("required") else 0
+
+    @staticmethod
+    def _tool_names(router_decision: Dict[str, Any]) -> str:
+        """Turda calisan araclarin virgullu listesi.
+
+        Cok adimli agent loop'ta bir turda birden fazla arac calisabilir; tek
+        'tool' alani bunu tasiyamaz. Loop oncesi de dogru calisir.
+        """
+        if not isinstance(router_decision, dict):
+            return ""
+        calls = router_decision.get("tools")
+        if isinstance(calls, list) and calls:
+            names = [str(call.get("name", "")) for call in calls if isinstance(call, dict)]
+            return ",".join(name for name in names if name)
+        single = router_decision.get("tool")
+        return str(single) if single else ""
 
     def list_conversations(
         self,
@@ -631,6 +477,52 @@ class AdminStore:
             result.append(item)
         return result
 
+    def list_recent_contacts(self, limit: int = 40) -> List[Dict[str, Any]]:
+        """Konusmus kullanicilar: istisna ekranindan tek tikla susturmak icin.
+
+        WhatsApp yeni kimlik formati "@lid" telefon numarasi degildir; operator
+        onu elle yazamaz. Bunun yerine konusan kisileri listeleyip yaninda
+        engel durumunu gosteririz — panele numara girmeye gerek kalmaz.
+        """
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT s.user_id,
+                       MAX(s.last_message_at) AS last_at,
+                       (SELECT channel FROM conversation_sessions
+                          WHERE user_id = s.user_id
+                       ORDER BY last_message_at DESC LIMIT 1) AS channel,
+                       EXISTS(SELECT 1 FROM ai_blocklist b WHERE b.user_id = s.user_id) AS blocked,
+                       EXISTS(SELECT 1 FROM user_ai_notes n
+                                WHERE n.user_id = s.user_id AND n.ai_paused = 1) AS paused,
+                       (SELECT ai_summary FROM user_ai_notes n WHERE n.user_id = s.user_id) AS summary,
+                       (SELECT ai_notes_json FROM user_ai_notes n WHERE n.user_id = s.user_id) AS notes_json
+                  FROM conversation_sessions s
+                 WHERE s.user_id NOT IN ({marks})
+              GROUP BY s.user_id
+              ORDER BY last_at DESC
+                 LIMIT ?
+                """.format(marks=",".join("?" for _ in self.INTERNAL_USER_IDS)),
+                (*self.INTERNAL_USER_IDS, limit),
+            ).fetchall()
+
+        contacts = []
+        for row in rows:
+            item = dict(row)
+            item["blocked"] = bool(item.get("blocked"))
+            item["paused"] = bool(item.get("paused"))
+            item["last_label"] = self._format_local(row["last_at"])
+            # Panelde "call-xxxx" / ham LID yerine gercek isim gorunsun.
+            display = None
+            try:
+                notes = json.loads(item.pop("notes_json", None) or "{}")
+                display = notes.get("name")
+            except (ValueError, TypeError):
+                item.pop("notes_json", None)
+            item["display"] = display or item["user_id"]
+            contacts.append(item)
+        return contacts
+
     def enqueue_outbound_message(self, user_id: str, message: str, sender: str = "panel") -> int:
         message = message.strip()
         if not message:
@@ -741,7 +633,9 @@ class AdminStore:
         suggestion = None
         if notes.get("pending_offer"):
             suggestion = "offer"
-        elif notes.get("issue") or notes.get("current_intents"):
+        elif notes.get("issue"):
+            # 'current_intents' regex katmanindan geliyordu; artik konuyu
+            # modelin urettigi musteri karti ('issue') tasiyor.
             suggestion = "support"
 
         if suggestion and self.LEAD_STAGES.index(suggestion) > self.LEAD_STAGES.index(current_stage):
@@ -872,11 +766,21 @@ class AdminStore:
             "turns": parsed_turns,
         }
 
-    def get_latest_session_id_for_user(self, user_id: str, channel: str) -> Optional[str]:
+    def get_latest_session_id_for_user(self, user_id: str, channel: str,
+                                       max_idle_hours: Optional[float] = None) -> Optional[str]:
+        """Kullanicinin son oturumu.
+
+        max_idle_hours verilirse, o sureden uzun sessiz kalmis oturum
+        DONDURULMEZ (None doner) — cagiran yeni bir oturum acar. Sesli aramada
+        her cagri zaten yeni bir kimlik alir, ama WhatsApp'ta kimlik telefon
+        numarasidir ve oturum aksi halde SONSUZA KADAR yasar: iki hafta sonra
+        yazan musteri hala "ayni gorusmede" sayilir, gorusme basina tek sefer
+        calisan araclar (ekstre, teklif) bir daha hic calismaz.
+        """
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT session_id
+                SELECT session_id, last_message_at
                 FROM conversation_sessions
                 WHERE user_id = ? AND channel = ?
                 ORDER BY last_message_at DESC
@@ -887,6 +791,15 @@ class AdminStore:
 
         if row is None:
             return None
+
+        if max_idle_hours is not None:
+            last_seen = self._parse_timestamp(row["last_message_at"])
+            if last_seen is None:
+                return None
+            idle = datetime.now(self.TR_TZ) - last_seen
+            if idle > timedelta(hours=max_idle_hours):
+                return None
+
         return row["session_id"]
 
     def get_sales_profile(self) -> Dict[str, Any]:
@@ -1245,6 +1158,76 @@ class AdminStore:
                 continue
         return ids
 
+    def find_user_ids_for_merchant(self, merchant_id: str) -> List[str]:
+        """Bu isletmeye baglanmis whatsapp/cagri kullanici id'lerini bulur.
+
+        Kopru: AI notlarindaki serbest 'merchant_id' alani (get_recovered_merchant_ids
+        ile ayni desen). Birkac kayit — Python'da parse ucuz.
+        """
+        user_ids: List[str] = []
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT user_id, ai_notes_json FROM user_ai_notes").fetchall()
+        for row in rows:
+            try:
+                notes = json.loads(row["ai_notes_json"] or "{}")
+            except (ValueError, TypeError):
+                continue
+            if isinstance(notes, dict) and notes.get("merchant_id") == merchant_id:
+                user_ids.append(row["user_id"])
+        return user_ids
+
+    def get_merchant_ops(self, merchant_id: str,
+                         extra_user_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Bir isletmenin operasyon-tarafi verisi (isletme-360'in ops bolumu).
+
+        Kopru merchant_id: identity tablosu (extra_user_ids olarak repository'den
+        gelir) + AI notlarindaki merchant_id. Iki DB'yi kapsayan islem YOK — salt
+        okuma. Eslesme yoksa bolumler bos doner (zarif dusus).
+        """
+        user_ids = set(extra_user_ids or [])
+        user_ids.update(self.find_user_ids_for_merchant(merchant_id))
+
+        empty = {"user_ids": [], "conversations": [], "lead_events": [],
+                 "tasks": [], "leads": [], "handoff_waiting": False}
+        if not user_ids:
+            return empty
+
+        conversations: List[Dict[str, Any]] = []
+        lead_events: List[Dict[str, Any]] = []
+        for uid in user_ids:
+            conversations.extend(self.list_conversations(user_id=uid))
+            for event in self.get_lead_events(uid):
+                event["user_id"] = uid
+                lead_events.append(event)
+
+        placeholders = ",".join("?" for _ in user_ids)
+        with self._connect() as connection:
+            task_rows = [dict(row) for row in connection.execute(
+                f"SELECT id, title, user_id, due_at, done, created_at, done_at "
+                f"FROM tasks WHERE user_id IN ({placeholders}) "
+                f"ORDER BY done ASC, COALESCE(due_at, created_at) ASC",
+                tuple(user_ids)).fetchall()]
+        for row in task_rows:
+            row["done"] = bool(row["done"])
+
+        leads_by_user = {lead["user_id"]: lead for lead in self.get_leads()}
+        leads = [leads_by_user[uid] for uid in user_ids if uid in leads_by_user]
+
+        conversations.sort(key=lambda item: item.get("last_message_at") or "", reverse=True)
+        lead_events.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+        handoff_waiting = any(
+            item["user_id"] in user_ids for item in self.get_handoff_queue())
+
+        return {
+            "user_ids": sorted(user_ids),
+            "conversations": conversations,
+            "lead_events": lead_events,
+            "tasks": task_rows,
+            "leads": leads,
+            "handoff_waiting": handoff_waiting,
+        }
+
     def get_revenue_kpis(self) -> Dict[str, Any]:
         """Gelir panosu: AI'in urettigi somut para etkisi.
 
@@ -1295,7 +1278,7 @@ class AdminStore:
                 "SELECT COUNT(DISTINCT t.session_id) AS c FROM conversation_turns t "
                 "JOIN conversation_sessions s ON s.session_id = t.session_id "
                 f"WHERE t.created_at >= ? AND s.user_id NOT IN ({internal_marks}) "
-                "AND t.context_json LIKE '%\"required\": true%'",
+                "AND t.handoff_required = 1",
                 (week_ago, *self.INTERNAL_USER_IDS),
             ).fetchone()["c"]
 
@@ -2202,8 +2185,15 @@ class AdminStore:
                        turns.created_at, sessions.user_id
                 FROM conversation_turns AS turns
                 JOIN conversation_sessions AS sessions ON sessions.session_id = turns.session_id
+                WHERE turns.handoff_required = 1
+                  AND turns.created_at >= ?
                 ORDER BY turns.id ASC
-                """
+                """,
+                # Bir gun GENIS tutulur: cutoff TR saat dilimli, created_at UTC
+                # yazilir. Bu bir ON FILTRE; kesin yas kontrolu asagida Python
+                # tarafinda timezone-farkindalikli yapilir. Genis tutmazsak SQL
+                # Python'dan katiysa sinirdaki kayit kuyruktan sessizce duser.
+                ((cutoff - timedelta(days=1)).isoformat(),),
             ).fetchall()]
             claim_rows = [dict(row) for row in connection.execute(
                 "SELECT user_id, MAX(created_at) AS claimed_at FROM lead_events WHERE event_type = 'handoff_claimed' GROUP BY user_id"

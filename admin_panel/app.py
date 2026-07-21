@@ -6,8 +6,12 @@ from pathlib import Path
 from flask import Flask, Response, abort, flash, redirect, render_template, request, send_from_directory, url_for
 
 from core.admin_store import AdminStore
+from core import demo_profile
+from core import pdf_report
 from core.briefing import generate_briefing
 from core.orchestrator import AgentOrchestrator
+# Operator konsolu kimligi: panel "Test Sohbeti" musteri simulatorudur, BU degildir.
+from core.tools.handlers import OPS_CHANNEL, OPS_USER_ID
 from whatsapp.app import register_whatsapp_routes
 from admin_panel.call_api import register_call_routes
 
@@ -19,7 +23,6 @@ STATIC_DIR = BASE_DIR / "static"
 # Panel ici test sohbetinin sabit kimligi; konusmalar bu kullanici altinda loglanir.
 PANEL_CHAT_USER_ID = "panel-test"
 PANEL_CHAT_CHANNEL = "panel"
-
 
 
 def _format_tl(value) -> str:
@@ -93,7 +96,7 @@ def create_app(
         # CSS degisikligi tarayici onbellegine takilmasin diye dosya mtime'i
         # ile surumler; her guncelleme otomatik taze gelir.
         try:
-            files = ("admin.css", "call.css", "call.js")
+            files = ("admin.css", "call.css", "call.js", "charts.js")
             return {"css_version": int(max(
                 os.path.getmtime(STATIC_DIR / name) for name in files
             ))}
@@ -163,6 +166,68 @@ def create_app(
             total_risk_try=sum(m.get("lost_volume_try", 0) for m in dormant),
             recovered_ids=admin_store.get_recovered_merchant_ids(),
         )
+
+    @app.route("/admin/test-profile", methods=["GET", "POST"])
+    def test_profile():
+        """Gosterim profili: sunumda kullanilacak isletme panelden duzenlenir.
+
+        Kaydedildiginde islem/hakedis verisi aylik cirodan YENIDEN URETILIR —
+        bos profil demoyu bozardi (asistan "kayit yok" derdi).
+        """
+        repo = active_orchestrator.merchant_data
+
+        if request.method == "POST":
+            submitted = request.form.to_dict(flat=False)
+            payload = {key: values[0] for key, values in submitted.items()}
+            payload["products"] = submitted.get("products", [])
+            payload["volumes"] = submitted.get("volumes", [])
+            saved = demo_profile.save_profile(repo, payload)
+            flash(f"Gösterim profili güncellendi: {saved['business_name']}. "
+                  "İşlem ve hakediş verisi yeniden üretildi.", "success")
+            return redirect(url_for("test_profile"))
+
+        demo_profile.ensure_exists(repo)
+        merchant = repo.get_merchant(demo_profile.TEST_MERCHANT_ID) or {}
+        return render_template(
+            "test_profile.html",
+            profile=demo_profile.read_profile(repo),
+            plans=repo.list_plans(),
+            merchant=merchant,
+            settlements=repo.list_settlements(demo_profile.TEST_MERCHANT_ID, limit=5),
+            txn_count=len(repo.find_transactions(demo_profile.TEST_MERCHANT_ID, limit=999)),
+            summary=repo.monthly_summary(demo_profile.TEST_MERCHANT_ID),
+            test_merchant_id=demo_profile.TEST_MERCHANT_ID,
+        )
+
+    @app.post("/admin/ops/ask")
+    def ops_ask():
+        """Operator konsolu: destek ekibi Ada'ya OPERASYON sorusu sorar.
+
+        Panel "Test Sohbeti"nden farki: orada operator MUSTERI gibi konusur
+        (isletme simulatoru). Burada ise hatta bir isletme yoktur; asistan tum
+        musteri tabanini goren dahili araclari kullanabilir.
+        """
+        payload = request.get_json(silent=True) or {}
+        question = str(payload.get("question", "")).strip()
+        if not question:
+            return {"error": "question gerekli"}, 400
+
+        result = active_orchestrator.process_turn(
+            user_input=question,
+            user_id=OPS_USER_ID,
+            channel=OPS_CHANNEL,
+        )
+        decision = result.get("router_decision") or {}
+        return {
+            "reply": result["agent_response"],
+            "tools": [item.get("name") for item in decision.get("tools", [])],
+            "iterations": decision.get("iterations", 1),
+        }
+
+    @app.post("/admin/ops/reset")
+    def ops_reset():
+        active_orchestrator.reset_conversation(OPS_USER_ID, channel=OPS_CHANNEL)
+        return {"ok": True}
 
     @app.post("/admin/briefing/generate")
     def generate_briefing_route():
@@ -340,12 +405,25 @@ def create_app(
         return render_template(
             "exceptions.html",
             blocked=admin_store.list_blocklist(),
+            contacts=admin_store.list_recent_contacts(),
         )
 
     @app.post("/admin/exceptions/<path:user_id>/remove")
     def remove_exception(user_id: str):
         admin_store.remove_from_blocklist(user_id)
         flash(f"{user_id} istisna listesinden çıkarıldı.", "success")
+        return redirect(url_for("exceptions"))
+
+    @app.post("/admin/exceptions/<path:user_id>/toggle")
+    def toggle_exception(user_id: str):
+        """Konusan bir kisiyi tek tikla sustur / tekrar ac."""
+        label = request.form.get("display", user_id)
+        if admin_store.is_blocked(user_id):
+            admin_store.remove_from_blocklist(user_id)
+            flash(f"{label} tekrar açıldı — AI yanıt verecek.", "success")
+        else:
+            admin_store.add_to_blocklist(user_id, request.form.get("note", "").strip())
+            flash(f"{label} susturuldu — AI artık yanıt vermeyecek.", "success")
         return redirect(url_for("exceptions"))
 
     @app.route("/admin/leads")
@@ -446,6 +524,217 @@ def create_app(
             turns=payload["turns"],
             ai_notes=admin_store.get_user_ai_notes(payload["session"]["user_id"]),
         )
+
+    # ------------------------------------------------ Musteriler (CRM 360)
+
+    _CUSTOMER_SORTS = {
+        "risk": lambda r: (-r["risk_score"], r["business_name"].lower()),
+        "volume": lambda r: (-r["last_month_try"], r["business_name"].lower()),
+        "name": lambda r: r["business_name"].lower(),
+        "change": lambda r: r["change_pct"],
+    }
+
+    @app.route("/admin/customers")
+    def customers():
+        """Isletme-360 listesi: 18 musteri (ciro, plan, risk, son temas) + filtre."""
+        repo = active_orchestrator.merchant_data
+        rows = repo.list_customers()
+        reps = sorted({r["account_manager"] for r in rows if r["account_manager"]})
+
+        selected = {key: request.args.get(key, "").strip()
+                    for key in ("tier", "segment", "rep", "risk")}
+        for field, value in (("tier", selected["tier"]), ("segment", selected["segment"]),
+                             ("account_manager", selected["rep"]),
+                             ("risk_tier", selected["risk"])):
+            if value:
+                rows = [r for r in rows if r[field] == value]
+
+        sort = request.args.get("sort", "risk").strip()
+        rows.sort(key=_CUSTOMER_SORTS.get(sort, _CUSTOMER_SORTS["risk"]))
+        selected["sort"] = sort
+
+        return render_template(
+            "customers.html",
+            customers=rows,
+            summary=repo.portfolio_summary(),
+            reps=reps,
+            filters=selected,
+        )
+
+    @app.route("/admin/customers/export.csv")
+    def export_customers_csv():
+        import csv
+        import io
+
+        repo = active_orchestrator.merchant_data
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow([
+            "merchant_id", "isletme", "sahip", "sektor", "sehir", "temsilci",
+            "tier", "plan", "son_ay_ciro", "degisim_pct", "risk_skoru",
+            "risk_tier", "segment", "son_temas", "durum",
+        ])
+        for c in repo.list_customers():
+            writer.writerow([
+                c["merchant_id"], c["business_name"], c["owner_name"], c["sector"],
+                c["city"], c["account_manager"], c["tier"], c["plan_name"],
+                c["last_month_try"], c["change_pct"], c["risk_score"],
+                c["risk_tier"], c["segment"], (c["last_contact_at"] or "")[:10], c["status"],
+            ])
+        return Response(
+            buffer.getvalue(), mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=musteriler.csv"})
+
+    @app.route("/admin/customers/<merchant_id>")
+    def customer_detail(merchant_id: str):
+        """Tek ekran isletme-360: is verisi (repository) + ops verisi (admin_store)."""
+        repo = active_orchestrator.merchant_data
+        data = repo.get_customer_360(merchant_id)
+        if not data:
+            abort(404)
+        identities = repo.list_identities_for_merchant(merchant_id)
+        ops = admin_store.get_merchant_ops(merchant_id, extra_user_ids=identities)
+        return render_template(
+            "customer_detail.html", data=data, ops=ops, merchant_id=merchant_id,
+            pdf_available=pdf_report.is_available())
+
+    @app.route("/admin/customers/<merchant_id>/export.csv")
+    def export_customer_csv(merchant_id: str):
+        import csv
+        import io
+
+        repo = active_orchestrator.merchant_data
+        data = repo.get_customer_360(merchant_id)
+        if not data:
+            abort(404)
+        merchant = data["merchant"]
+        plan = data.get("plan") or {}
+        risk = data.get("risk") or {}
+        trend = data.get("volume_trend") or {}
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["Bölüm", "Alan", "Değer"])
+        for label, value in (
+            ("İşletme", merchant.get("business_name")),
+            ("Sahip", merchant.get("owner_name")),
+            ("Sektör", merchant.get("sector")),
+            ("Şehir/İlçe", f"{merchant.get('city', '')} / {merchant.get('district', '')}"),
+            ("Temsilci", merchant.get("account_manager")),
+            ("Tier", merchant.get("tier")),
+            ("Plan", plan.get("name")),
+            ("Son ay ciro (TL)", trend.get("last_month")),
+            ("Değişim %", trend.get("change_pct")),
+            ("Risk skoru", risk.get("risk_score")),
+            ("Risk kademesi", risk.get("risk_tier")),
+            ("Segment", risk.get("segment")),
+            ("Durum", merchant.get("status")),
+        ):
+            writer.writerow(["Profil", label, value])
+
+        writer.writerow([])
+        writer.writerow(["Hakedişler", "", ""])
+        writer.writerow(["batch_id", "tarih", "brüt_try", "net_try", "durum"])
+        for s in data.get("settlements", []):
+            writer.writerow([s.get("batch_id"), (s.get("batch_date") or "")[:10],
+                             s.get("gross_try"), s.get("net_try"), s.get("status")])
+
+        writer.writerow([])
+        writer.writerow(["İşlemler", "", ""])
+        writer.writerow(["txn_id", "tarih", "tutar_try", "kanal", "durum"])
+        for t in data.get("transactions", []):
+            writer.writerow([t.get("txn_id"), (t.get("timestamp") or "")[:16],
+                             t.get("amount_try"), t.get("channel"), t.get("status")])
+
+        filename = f"musteri-{merchant_id}.csv"
+        return Response(
+            buffer.getvalue(), mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+    def _project_name() -> str:
+        try:
+            return (active_orchestrator.merchant_data.get_config("project", {})
+                    or {}).get("name") or "Moka Sesli Asistan"
+        except Exception:
+            return "Moka Sesli Asistan"
+
+    @app.route("/admin/customers/<merchant_id>/report.pdf")
+    def customer_pdf_report(merchant_id: str):
+        """Musteri-360'in estetik LaTeX PDF raporu (tarayici print yerine)."""
+        repo = active_orchestrator.merchant_data
+        data = repo.get_customer_360(merchant_id)
+        if not data:
+            abort(404)
+        if not pdf_report.is_available():
+            flash("PDF motoru (pdflatex) bulunamadı — CSV'yi kullanabilirsiniz.", "error")
+            return redirect(url_for("customer_detail", merchant_id=merchant_id))
+        try:
+            pdf = pdf_report.customer_pdf(data, project_name=_project_name())
+        except pdf_report.PdfCompileError:
+            flash("PDF oluşturulamadı.", "error")
+            return redirect(url_for("customer_detail", merchant_id=merchant_id))
+        return Response(
+            pdf, mimetype="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=musteri-{merchant_id}.pdf"})
+
+    @app.route("/admin/reports")
+    def reports():
+        """Musteri tabanli rapor ekrani: portfoy grafikleri + top listeler."""
+        repo = active_orchestrator.merchant_data
+        return render_template(
+            "reports.html",
+            summary=repo.portfolio_summary(),
+            customers=repo.list_customers(),
+            pdf_available=pdf_report.is_available())
+
+    @app.route("/admin/reports/report.pdf")
+    def portfolio_pdf_report():
+        """Portfoy raporunun estetik LaTeX PDF ciktisi."""
+        repo = active_orchestrator.merchant_data
+        if not pdf_report.is_available():
+            flash("PDF motoru (pdflatex) bulunamadı — CSV'yi kullanabilirsiniz.", "error")
+            return redirect(url_for("reports"))
+        try:
+            pdf = pdf_report.portfolio_pdf(repo.portfolio_summary(), project_name=_project_name())
+        except pdf_report.PdfCompileError:
+            flash("PDF oluşturulamadı.", "error")
+            return redirect(url_for("reports"))
+        return Response(
+            pdf, mimetype="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=portfoy-raporu.pdf"})
+
+    @app.route("/admin/reports/export.csv")
+    def export_report_csv():
+        import csv
+        import io
+
+        summary = active_orchestrator.merchant_data.portfolio_summary()
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+
+        writer.writerow(["Aylık Ciro ve Komisyon"])
+        writer.writerow(["ay", "ciro_try", "komisyon_try"])
+        for m in summary["monthly_totals"]:
+            writer.writerow([m["month"], m["volume_try"], m["commission_try"]])
+
+        writer.writerow([])
+        writer.writerow(["Segment Dağılımı"])
+        for name, count in summary["count_by_segment"].items():
+            writer.writerow([name, count])
+
+        writer.writerow([])
+        writer.writerow(["Risk Kademesi Dağılımı"])
+        for name, count in summary["count_by_risk_tier"].items():
+            writer.writerow([name, count])
+
+        writer.writerow([])
+        writer.writerow(["Plan Dağılımı"])
+        for name, count in summary["plan_distribution"].items():
+            writer.writerow([name, count])
+
+        return Response(
+            buffer.getvalue(), mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=portfoy-raporu.csv"})
 
     register_whatsapp_routes(app, orchestrator_instance=active_orchestrator)
     register_call_routes(app, active_orchestrator)

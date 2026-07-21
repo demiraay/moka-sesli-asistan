@@ -6,7 +6,7 @@
 
 **Ödeme kuruluşlarının işletme müşterileri için konuşma tabanlı, gelir odaklı yapay zekâ destek hattı**
 
-<img src="https://img.shields.io/badge/testler-94%2F94-16a34a?style=flat-square" alt="Testler">
+<img src="https://img.shields.io/badge/testler-168%2F168-16a34a?style=flat-square" alt="Testler">
 <img src="https://img.shields.io/badge/senaryo-7%2F7-16a34a?style=flat-square" alt="Senaryolar">
 <img src="https://img.shields.io/badge/yan%C4%B1t%20turu-~2--3%20sn-2563eb?style=flat-square" alt="Gecikme">
 <img src="https://img.shields.io/badge/Python-3.12+-3776ab?style=flat-square&logo=python&logoColor=white" alt="Python">
@@ -37,7 +37,7 @@
 | **Ne yapar?** | Üye işyerlerinin hakediş, işlem, cihaz ve komisyon sorularını doğal Türkçe **sesli** diyalogda, gerçek işlem verisine dayanarak tek çağrıda çözer. |
 | **Neden farklı?** | Destek hattını maliyet merkezi olarak görmez: çözüm sonrası bağlama uygun teklif üretir, hacmi düşen işletmeleri **kendisi arar** ve kazanımı panele **"kurtarılan hacim ₺"** olarak işler. |
 | **Ne kadar hızlı?** | Uçtan uca yanıt turu (konuşma tanıma → iki model → ses sentezi) ortalama **2–3 saniye**; tuş yok, menü yok, bekleme müziği yok. |
-| **Ne kadar güvenilir?** | Tutar/tarih bilgileri yalnızca araç katmanından gelir (uydurma koruması); 94 otomatik test; her yanıtın veri kaynağı arayüzden izlenebilir. |
+| **Ne kadar güvenilir?** | Tutar/tarih bilgileri yalnızca araç katmanından gelir (uydurma koruması); 168 otomatik test; her yanıtın veri kaynağı arayüzden izlenebilir. |
 | **Ekonomik bağlam** | Yapay zekâ ile yürütülen bir çağrı ~0,30–0,50 USD, insan temsilciyle 6–12 USD maliyetindedir; BFSI, sesli yapay zekâ pazarının en büyük dikeyidir (%32,9). Ayrıntılar için [teknik rapor](docs/TEKNIK_RAPOR.md). |
 
 <br>
@@ -122,10 +122,11 @@ flowchart TD
     A["Arayan işletme<br/>(tarayıcı çağrı istemcisi)"] -->|webm/opus| B["Çağrı API'si<br/>Flask"]
     B --> C["Konuşma tanıma<br/>Whisper large-v3-turbo (Groq)"]
     C --> D["Diyalog çekirdeği<br/>AgentOrchestrator"]
-    D --> E["Yönlendirici model<br/>araç + argüman seçimi"]
-    E --> F["Alan araçları (9)<br/>hakediş · işlem · cihaz · komisyon<br/>ekstre · link · teklif · devir · genel"]
-    F --> G[("Veri katmanı<br/>işlem / hakediş / cihaz / plan")]
-    F --> H["Yanıt modeli<br/>konuşmaya uygun Türkçe"]
+    D --> E["Planlayıcı model<br/>çok adımlı araç döngüsü"]
+    E -->|tool_calls| F["Araç kayıt defteri (10)<br/>hakediş · işlem · cihaz · komisyon<br/>ekstre · link · teklif · devir · genel · hafıza"]
+    F -->|sonuç geri beslenir| E
+    F --> G[("İş verisi<br/>SQLite: işlem / hakediş / cihaz / plan")]
+    E --> H["Yanıt modeli<br/>konuşmaya uygun Türkçe"]
     H --> I["Ses sentezi<br/>ElevenLabs"]
     I --> A
     D --> J[("SQLite<br/>görüşme · görev · gelir olayları")]
@@ -144,22 +145,36 @@ sentezi dâhil — ortalama **2–3 saniye** aralığındadır.
 
 ## 4. Diyalog Çekirdeği
 
-Çekirdek, her kullanıcı ifadesini iki aşamada işler:
+Çekirdek, her kullanıcı ifadesini iki fazda işler:
 
-1. **Yönlendirme.** Hafif bir model, ifadeyi ve görüşme bağlamını
-   değerlendirerek çağrılacak aracı ve argümanlarını JSON olarak üretir. Aynı
-   çağrıda "müşteri kartı" adı verilen yapısal hafıza güncellenir: güncel
-   sorun, anılan tutar ve tarih, ruh hâli, olası satış fırsatı. Kart, sonraki
-   turlarda her iki modele de otoriter bağlam olarak sunulur.
+1. **Planlama (çok adımlı araç döngüsü).** Hafif bir model, araçları
+   *kendisi* seçer — sağlayıcının yerel araç çağırma (tool calling) yeteneğiyle.
+   Her aracın sonucu modele geri beslenir; model sonucu görüp gerekirse ikinci
+   bir araç çağırır, argümanını düzeltir ya da durur. Örneğin filtresiz bir
+   işlem araması "beş işlem bulundu, tutarı teyit ettirin" dönerse model ikinci
+   turda tutarla daraltır. Görüşme hafızası ("müşteri kartı") da bir araçtır:
+   model yeni bilgi çıktıkça günceller, alanlar tek tek birleştirilir.
 2. **Yanıt üretimi.** Araç sonuçları yapısal bir bağlam nesnesine yazılır ve
    daha güçlü bir model bu bağlamdan, sesli okumaya uygun kısa Türkçe yanıtı
    üretir.
 
-Dayanıklılık için üç kademe tanımlıdır: model sayısal argümanı metin olarak
-döndürürse ("1.250") tür dönüşümü dispatch sınırında yapılır; herhangi bir araç
-çalışması hata verirse çağrı sonlanmaz, asistan özür dileyip bilgiyi yeniden
-ister; API anahtarı kota sınırına takılırsa yedek anahtara, o da yoksa yerel
-modele düşülür.
+İki fazın ayrı modellerde koşmasının nedeni yalnızca hız değil: sağlayıcının
+ücretsiz katmanında her modelin ayrı dakikalık jeton bütçesi vardır, böylece
+döngü yanıt modelinin kotasını tüketmez.
+
+Döngü sınırlıdır ve kendini korur: en fazla dört araç turu, 3,5 saniyelik
+planlama süre sınırı, devir (`trigger_handoff`) çağrıldığında anında sonlanma.
+Yan etkili araçlar (ekstre gönderimi, ödeme linki, teklif kaydı) tekrar
+çağrılırsa **çalıştırılmaz**; modele "bu turda zaten yapıldı" bilgisi döner —
+böylece çok adımlı akışta çift kayıt oluşmaz. Bir araç hata verirse çağrı
+sonlanmaz: hata metni araç sonucu olarak modele beslenir ve model başka bir yol
+deneyebilir. API anahtarı kota sınırına takılırsa yedek anahtara, o da yoksa
+yerel modele düşülür.
+
+Sistemde anahtar kelime ya da düzenli ifadeye dayalı niyet/veri çıkarımı
+**yoktur**; tüm karar ve çıkarım bağlamdan modele aittir. Araçlar tek bir kayıt
+defterinde (registry) tanımlıdır: şema, yürütme ve panel etiketleri aynı
+bildirimden türetilir.
 
 ## 5. Konuşma İşleme Hattı
 
@@ -181,7 +196,10 @@ Prototip, gerçek ödeme altyapısını temsil eden bir örnek veri kümesiyle
 çalışır ve araçların her biri gerçek sistemde tek bir servis uç noktasına
 karşılık gelecek biçimde tanımlanmıştır.
 
-| Küme | İçerik |
+Veri, ilişkisel bir SQLite şemasında tutulur (yabancı anahtarlar, indeksler ve
+sürümlenmiş şema göçleri ile); `scripts/seed_demo_data.py` örnek kümeyi kurar.
+
+| Tablo | İçerik |
 | --- | --- |
 | merchants | 18 üye işyeri: sektör, ürünler, komisyon planı, altı aylık ciro serisi |
 | transactions | İşlem kayıtları: tutar, komisyon, kart son dört hane, durum, hakediş grubu |
@@ -190,9 +208,11 @@ karşılık gelecek biçimde tanımlanmıştır.
 | commission_plans | Plan tanımları ve geri kazanım kampanyası |
 | support_kb | Arıza giderme adımları ve sık sorulan işlemler |
 
-Kayıtlardaki tarihler göreli belirteçlerle tutulur ve yükleme sırasında güncel
-tarihe çözülür; aylık ciro serileri de çalışma anında içinde bulunulan aya
-sabitlenir. Böylece gösterim verisi zamanla geçerliliğini yitirmez.
+Kayıtlardaki tarihler göreli belirteçlerle (`D-1T16:40:00`) saklanır; ham
+belirteç ve çözülmüş zaman damgası ayrı sütunlarda tutulur, böylece sorgular
+indeks kullanabilir. Gün değiştiğinde belirteçler yeniden çözülür ve aylık ciro
+serileri içinde bulunulan aya sabitlenir — gösterim verisi zamanla geçerliliğini
+yitirmez.
 
 ## 7. Yönetim Paneli
 
@@ -238,6 +258,8 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
 cp .env.example .env   # ve asagidaki alanlari doldurun
+
+.venv/bin/python scripts/seed_demo_data.py   # is verisi veritabanini kurar
 ```
 
 | Değişken | Açıklama |
@@ -284,7 +306,7 @@ değerlendirilmiştir (ayrıntılı yöntem ve tartışma için
 | --- | --- |
 | Uçtan uca yanıt turu | Ortalama 2–3 sn (STT ~0,4 · yönlendirme ~0,6–1,0 · yanıt ~1,0–1,5 · sentez ~0,6–0,8) |
 | Senaryo başarımı | 7/7 — hedeflenen araç zinciri ve yan etkiler (servis kaydı, gelir olayı) doğrulandı |
-| Otomatik testler | 94/94 (veri katmanı, araç yönlendirme, çağrı API'si, kanal köprüsü, dil işleme) |
+| Otomatik testler | 168/168 (veri katmanı, agent döngüsü, araç kayıt defteri, çağrı API'si, kanal köprüsü, şema göçleri) |
 | Güvenlik müdahalesi | Tam kart numarası okunma girişiminde sözün kesilmesi doğrulandı |
 | Geri kazanım (temsilî) | Tek proaktif aramada 143.333 TL/ay hacim, panele parasal işlendi |
 
@@ -305,18 +327,21 @@ değerlendirilmiştir (ayrıntılı yöntem ve tartışma için
 .venv/bin/python -m pytest tests/
 ```
 
-Test kümesi 94 adettir; veri katmanı, senaryo bazlı araç yönlendirmesi, çağrı
-API'si, WhatsApp köprüsü ve dil işleme katmanı, model çağrıları taklit
+Test kümesi 168 adettir; veri katmanı ve SQL sorgu planları, çok adımlı agent
+döngüsü (zincirleme, yan etki koruması, süre/iterasyon sınırları), araç kayıt
+defteri, şema göçleri, çağrı API'si ve WhatsApp köprüsü, model çağrıları taklit
 edilerek deterministik biçimde doğrulanır.
 
 ## 13. Proje Yapısı
 
 ```
 core/            Diyalog çekirdeği, araçlar, veri erişimi, konuşma işleme
+core/migrations/ Numaralı veritabanı şema sürümleri
 admin_panel/     Yönetim paneli ve çağrı istemcisi (Flask + şablonlar)
 whatsapp/        WhatsApp köprü servisi (ikincil kanal)
 whatsapp_mesaj_bot/  Node tabanlı WhatsApp Web istemcisi
-data/            Örnek veri kümesi (JSON)
+data/            SQLite veritabanları (üretilir, depoya dâhil değildir)
+scripts/seed_data/   Veritabanı tohumlama kaynağı (JSON)
 scripts/         Çalıştırma ve gösterim yardımcıları
 tests/           Test kümesi
 ```

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Raporlar — {{ panel_project }}{% endblock %}
+
+{% block content %}
+  <div class="print-header">
+    <strong>{{ panel_project }} — Portföy Raporu</strong>
+  </div>
+
+  <div class="page-header">
+    <h1>Raporlar</h1>
+    <p>Müşteri tabanlı portföy raporu — ciro trendi, komisyon, işlem hacmi, risk ve segment dağılımı.</p>
+  </div>
+
+  <section class="chart-card print-hide" style="margin-top: 4px;">
+    <div class="customer-filters">
+      <span class="demand-label">Dışa aktar:</span>
+      <a class="button secondary" href="{{ url_for('export_report_csv') }}">CSV indir</a>
+      {% if pdf_available %}
+      <a class="button" href="{{ url_for('portfolio_pdf_report') }}">PDF indir</a>
+      {% endif %}
+      <span style="flex:1"></span>
+      <a class="button secondary" href="{{ url_for('customers') }}">← Müşteriler</a>
+    </div>
+  </section>
+
+  <section class="stats-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 18px;">
+    <article class="stat-card">
+      <span>Portföy işletme</span>
+      <strong>{{ summary.merchant_count }}</strong>
+    </article>
+    <article class="stat-card highlight">
+      <span>Bu ay ciro</span>
+      <strong>{{ summary.total_last_month_try | tl }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Bu ay komisyon</span>
+      <strong>{{ summary.total_commission_try | tl }}</strong>
+      <em class="trend flat">tahmini gelir</em>
+    </article>
+    <article class="stat-card">
+      <span>Uyuyan / daralan</span>
+      <strong>{{ summary.count_by_segment.get('uyuyan', 0) + summary.count_by_segment.get('daralıyor', 0) }}</strong>
+      <em class="trend down">risk altında</em>
+    </article>
+  </section>
+
+  <section class="chart-grid" style="grid-template-columns: 1fr 1fr;">
+    <article class="chart-card">
+      <h2>Aylık ciro trendi (portföy)</h2>
+      <div id="revenue-chart" class="chart-slot"></div>
+    </article>
+    <article class="chart-card">
+      <h2>Aylık komisyon (tahmini gelir)</h2>
+      <div id="commission-chart" class="chart-slot"></div>
+    </article>
+  </section>
+
+  <section class="chart-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+    <article class="chart-card">
+      <h2>Aylık işlem hacmi (adet)</h2>
+      <div id="txn-chart" class="chart-slot"></div>
+    </article>
+    <article class="chart-card">
+      <h2>Risk kademesi dağılımı</h2>
+      <div class="demand-list">
+        {% set risk_total = (summary.count_by_risk_tier.values() | sum) or 1 %}
+        {% for tier in ['kritik', 'yüksek', 'orta', 'düşük'] %}
+        {% set n = summary.count_by_risk_tier.get(tier, 0) %}
+        <div class="demand-row">
+          <span class="demand-label">{{ tier | capitalize }}</span>
+          <span class="demand-bar"><i style="width: {{ (n / risk_total * 100) | round(1) }}%"></i></span>
+          <span class="demand-count">{{ n }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="chart-card">
+      <h2>Segment dağılımı</h2>
+      <div class="demand-list">
+        {% set seg_total = (summary.count_by_segment.values() | sum) or 1 %}
+        {% for seg in ['büyüyor', 'stabil', 'daralıyor', 'uyuyan'] %}
+        {% set n = summary.count_by_segment.get(seg, 0) %}
+        <div class="demand-row">
+          <span class="demand-label">{{ seg | capitalize }}</span>
+          <span class="demand-bar"><i style="width: {{ (n / seg_total * 100) | round(1) }}%"></i></span>
+          <span class="demand-count">{{ n }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <section class="chart-grid" style="grid-template-columns: 1fr 1fr;">
+    <article class="chart-card">
+      <h2>En hızlı büyüyen 5 işletme</h2>
+      {% if summary.top_growing %}
+      <table class="data-table">
+        <thead><tr><th>İşletme</th><th>Bu ay</th><th>Değişim</th></tr></thead>
+        <tbody>
+          {% for c in summary.top_growing %}
+          <tr class="clickable-row" onclick="window.location='{{ url_for('customer_detail', merchant_id=c.merchant_id) }}'">
+            <td><strong>{{ c.business_name }}</strong></td>
+            <td>{{ c.last_month_try | tl }}</td>
+            <td><span class="trend up">▲ %{{ c.change_pct }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty-inline">Büyüyen işletme yok.</p>{% endif %}
+    </article>
+    <article class="chart-card">
+      <h2>En riskli 5 işletme (uyuyan/daralan)</h2>
+      {% if summary.top_dormant %}
+      <table class="data-table">
+        <thead><tr><th>İşletme</th><th>Bu ay</th><th>Risk</th></tr></thead>
+        <tbody>
+          {% for c in summary.top_dormant %}
+          <tr class="clickable-row" onclick="window.location='{{ url_for('customer_detail', merchant_id=c.merchant_id) }}'">
+            <td><strong>{{ c.business_name }}</strong><small style="display:block;color:var(--muted);">{{ c.segment }}</small></td>
+            <td>{{ c.last_month_try | tl }}</td>
+            <td><span class="temp-badge hot">{{ c.risk_tier }} · {{ c.risk_score }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty-inline">Riskli işletme yok.</p>{% endif %}
+    </article>
+  </section>
+
+<script>
+  var monthlyTotals = {{ summary.monthly_totals | tojson }};
+  var commissionByMonth = {{ summary.commission_by_month | tojson }};
+  var txnByMonth = {{ summary.txn_volume_by_month | tojson }};
+
+  function monthLabel(m) { return (m || "").slice(5); }
+
+  mokaLineChart("revenue-chart",
+    monthlyTotals.map(function (m) { return { label: monthLabel(m.month), value: m.volume_try }; }));
+  mokaBarChart("commission-chart",
+    commissionByMonth.map(function (m) { return { label: monthLabel(m.month), value: m.commission_try }; }));
+  mokaBarChart("txn-chart",
+    txnByMonth.map(function (m) { return { label: monthLabel(m.month), value: m.count }; }));
+</script>
+{% endblock %}

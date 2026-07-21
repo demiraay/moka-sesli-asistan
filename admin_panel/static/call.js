@@ -127,14 +127,36 @@
     const bubble = document.createElement("div");
     bubble.className = "bubble " + role;
     bubble.textContent = text;
-    if (meta && (meta.tool || meta.latency)) {
+    const chain = (meta && meta.tools && meta.tools.length)
+      ? meta.tools
+      : (meta && meta.tool ? [meta.tool] : []);
+
+    if (meta && (chain.length || meta.latency)) {
       const metaRow = document.createElement("div");
       metaRow.className = "meta";
-      if (meta.tool) {
+
+      // Cok adimli agent loop: bir turda birden fazla arac calisabilir.
+      // Zincirin TAMAMI gosterilir — ajanin dusundugunun gorunur kanitidir.
+      chain.forEach(function (name, index) {
+        if (index > 0) {
+          const arrow = document.createElement("span");
+          arrow.className = "tool-arrow";
+          arrow.textContent = "→";
+          metaRow.appendChild(arrow);
+        }
         const badge = document.createElement("span");
         badge.className = "tool-badge";
-        badge.textContent = meta.tool;
+        badge.textContent = (cfg.toolLabels && cfg.toolLabels[name]) || name;
+        badge.title = name;
         metaRow.appendChild(badge);
+      });
+
+      if (meta.iterations > 1) {
+        const rounds = document.createElement("span");
+        rounds.className = "iteration-badge";
+        rounds.textContent = meta.iterations + " tur";
+        rounds.title = "Model araç sonucunu görüp yeniden karar verdi";
+        metaRow.appendChild(rounds);
       }
       if (meta.latency && el.latencyToggle.checked) {
         const lat = document.createElement("span");
@@ -329,14 +351,13 @@
     form.append("call_id", callId);
     form.append("audio", blob, "turn.webm");
     try {
-      const resp = await fetch("/call/turn", { method: "POST", body: form });
-      const data = await resp.json();
-      pendingUpload = false;
-      handleTurnResponse(data);
+      // Kullanicinin ne dedigi STT'den sonra belli olur; balonu sunucu yazar.
+      await streamTurn(form, { skipUserBubble: false });
     } catch (err) {
-      pendingUpload = false;
       addSysNote("Bağlantı hatası — tekrar dinliyorum.");
       setState("listening");
+    } finally {
+      pendingUpload = false;
     }
   }
 
@@ -347,13 +368,87 @@
     form.append("text", text);
     addBubble("user", text);
     try {
-      const resp = await fetch("/call/turn", { method: "POST", body: form });
-      const data = await resp.json();
-      handleTurnResponse(data, { skipUserBubble: true });
+      await streamTurn(form, { skipUserBubble: true });
     } catch (err) {
       addSysNote("Bağlantı hatası.");
       setState("listening");
     }
+  }
+
+  // --- akan cevap ---------------------------------------------------------
+  //
+  // Cevap tek blok halinde degil, uretildikce yazilir. Sunucu tarafi metni
+  // yalnizca "kararli" hale geldikce yolluyor, bu yuzden ekrana yazilan
+  // hicbir sey sonradan degismez (bkz. orchestrator._stream_polished).
+  async function streamTurn(form, opts) {
+    opts = opts || {};
+    const response = await fetch("/call/turn/stream", { method: "POST", body: form });
+    // Sessizlik/hata durumunda sunucu duz JSON doner (akis baslamaz).
+    if (!(response.headers.get("content-type") || "").includes("text/event-stream")) {
+      handleTurnResponse(await response.json(), opts);
+      return;
+    }
+    if (!response.ok || !response.body) throw new Error("stream basarisiz");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let bubble = null;
+    let streamed = "";
+
+    function ensureBubble() {
+      if (!bubble) {
+        bubble = document.createElement("div");
+        bubble.className = "bubble agent streaming";
+        el.transcript.appendChild(bubble);
+      }
+      return bubble;
+    }
+
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE olaylari bos satirla ayrilir.
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() || "";
+
+      for (const block of blocks) {
+        let name = null, payload = null;
+        for (const line of block.split("\n")) {
+          if (line.startsWith("event:")) name = line.slice(6).trim();
+          else if (line.startsWith("data:")) {
+            try { payload = JSON.parse(line.slice(5).trim()); } catch (e) { payload = null; }
+          }
+        }
+        if (!name || !payload) continue;
+
+        if (name === "tool") {
+          // Planlama uzun surebilir; kullanici sessizce beklemesin.
+          const label = (cfg.toolLabels && cfg.toolLabels[payload.name]) || payload.name;
+          el.stateLabel.textContent = label + "…";
+        } else if (name === "delta") {
+          if (state === "ended") return;
+          if (!bubble) setState("speaking");   // yazmaya basladik
+          streamed += payload.text;
+          ensureBubble().textContent = streamed;
+          el.transcript.scrollTop = el.transcript.scrollHeight;
+        } else if (name === "error") {
+          addSysNote(payload.detail || "Cevap üretilemedi.");
+          setState("listening");
+          return;
+        } else if (name === "done") {
+          if (bubble) bubble.remove();       // meta satirli nihai balonla degistir
+          handleTurnResponse(payload, { skipUserBubble: opts.skipUserBubble });
+          return;
+        }
+      }
+    }
+
+    // Akis 'done' gelmeden koptuysa yazilani koru.
+    if (bubble) bubble.classList.remove("streaming");
+    setState("listening");
   }
 
   function handleTurnResponse(data, opts) {
@@ -374,6 +469,8 @@
     if (data.transcript) phoneShowCaption(data.transcript);
     addBubble("agent", data.reply_text, {
       tool: data.tool,
+      tools: data.tools,
+      iterations: data.iterations,
       latency: data.latency_ms,
     });
 

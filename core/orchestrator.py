@@ -1,95 +1,226 @@
 from typing import Dict, Any, List
 import json
+import os
+import threading
+import time
+from collections import OrderedDict
 import re
 import uuid
 from core.config import Config
 from core.admin_store import AdminStore
 from core.merchant_data import MerchantDataManager, describe_day
-from core.rules import RuleEngine
 from core.schemas import ResponseBuilder
 from core.prompts import SystemPromptBuilder
 from core.llm import LLMClient, is_llm_error
 from core.parsing import parse_llm_json
-from core.tools import get_router_system_prompt, TOOLS_SCHEMA
-from core.intent import IntentParser
-from core.slots import SlotMapper
+from core import tools
+from core.tools import (
+    ToolContext,
+    build_planner_system_prompt,
+    build_router_system_prompt,
+    openai_tools_schema,
+    panel_tool_labels,
+)
+from core.agent import ToolPlanner, trim_transcript
+from core.tools.handlers import OPS_CHANNEL, OPS_USER_ID
+from core.formatting import (
+    format_try_amount,
+    mask_email,
+    parse_amount_text,
+    speakable_iban,
+    time_of,
+)
 
 # Demo fallback: panel test sohbeti / sesli demo bir isletme secmediyse bu hatta
 # baglanmis kabul edilir (gercek sistemde kimlik CTI'dan gelir).
 DEFAULT_DEMO_MERCHANT_ID = "M-1001"
+
+# Cok adimli agent loop. AGENT_ENABLED=0 ile eski tek atimlik router yoluna
+# donulebilir (demo gunu sigortasi).
+AGENT_LOOP_ENABLED = os.getenv("AGENT_ENABLED", "1").strip() not in ("0", "false", "False")
+
+# Bu sureden uzun sessiz kalan oturum kapanir, sonraki mesaj YENI gorusme sayilir.
+# "Gorusme basina bir kez" kurallarinin anlamli olmasi buna bagli.
+try:
+    SESSION_IDLE_HOURS = float(os.getenv("SESSION_IDLE_HOURS", "6"))
+except ValueError:
+    SESSION_IDLE_HOURS = 6.0
+
+
+# Bellekte tutulacak en fazla kullanici. Asilinca EN ESKI kullanicinin bellek
+# ici durumu dusurulur.
+#
+# Bu KAYIP DEGILDIR: dusen her sey veritabanindan geri kurulabilir —
+# profil/kart ai_notes'tan (_restore_user_profile), konusma gecmisi ve
+# planlayici transkripti conversation_turns'ten (_hydrate_*). Geri donen
+# kullanici sessizce yeniden yuklenir.
+try:
+    MAX_ACTIVE_USERS = int(os.getenv("MAX_ACTIVE_USERS", "200"))
+except ValueError:
+    MAX_ACTIVE_USERS = 200
 
 
 class AgentOrchestrator:
     def __init__(self):
         self.config = Config()
         self.merchant_data = MerchantDataManager()
-        self.rule_engine = RuleEngine()
         self.prompt_builder = SystemPromptBuilder()
         self.llm_client = LLMClient()
-        self.intent_parser = IntentParser()
-        self.slot_mapper = SlotMapper()
         self.admin_store = AdminStore()
         self.active_sessions: Dict[str, str] = {}
 
-        self.history: List[Dict[str, Any]] = []
         self.conversation_histories: Dict[str, List[Dict[str, Any]]] = {}
+        # Planlayicinin kalici arac transkripti (bkz. _get_planner_transcript)
+        self.planner_transcripts: Dict[str, List[Dict[str, Any]]] = {}
         self.user_profiles: Dict[str, Dict[str, Any]] = {}
         # Cagri baglami: kimlik telefondan/panelden gelir, router argumani DEGILDIR.
         self.call_contexts: Dict[str, Dict[str, Any]] = {}
 
-    # ------------------------------------------------------------ formatting
+        # Es zamanlilik: Flask threaded=True calisir. Ayni kullanicidan gelen
+        # iki mesaj (ornegin arka arkaya iki WhatsApp mesaji) ayni profili ve
+        # transkripti ES ZAMANLI degistirebilirdi. Kullanici basina kilit,
+        # turlari siraya sokar; farkli kullanicilar birbirini beklemez.
+        self._structure_lock = threading.RLock()
+        self._user_locks: Dict[str, threading.RLock] = {}
+        # Son erisim sirasi (LRU tahliyesi icin).
+        self._user_seen: "OrderedDict[str, float]" = OrderedDict()
 
-    def _format_try_amount(self, amount: float) -> str:
-        # Savunmaci: LLM/veri katmani string dondurse bile cokme; "1.250" gibi
-        # binlik ayracli metinler de dogru cozulur (tur-2 hakem bulgusu #1).
-        parsed = self._parse_amount_text(amount)
-        if parsed is None:
-            return f"{amount} TL"
-        amount = int(round(parsed))
-        if amount >= 1_000_000:
-            millions = amount // 1_000_000
-            thousands = (amount % 1_000_000) // 1_000
-            if thousands:
-                return f"{millions} milyon {thousands} bin TL"
-            return f"{millions} milyon TL"
+    # -------------------------------------------------------------- akis
 
-        if amount >= 1_000:
-            thousands = amount // 1_000
-            remainder = amount % 1_000
-            # "1 bin 250" kulaga yanlis gelir; Turkcede "bin 250" denir.
-            prefix = "bin" if thousands == 1 else f"{thousands} bin"
-            if remainder:
-                return f"{prefix} {remainder} TL"
-            return f"{prefix} TL"
+    # Sunum katmani metin uzerinde desen esler (maskeli IBAN, %, kart, URL);
+    # parcayi erken yayinlarsak desen bolunur ve ekranda yazi SONRADAN degisir.
+    # Bu yuzden metnin sonundan bir miktar geride tutulur.
+    #
+    # Tampon KUCUK olmali: cok buyuk tutulursa kisa sesli cevaplarda her sey
+    # sona kadar bekler ve akis anlamsizlasir (170 karakterlik bir cevapta
+    # 120'lik tampon ilk parcayi cevabin sonuna atiyordu).
+    # En uzun desen maskeli IBAN: "TR** **** **** **** **44 17" = 27 karakter.
+    STREAM_LOOKAHEAD_CHARS = 40
 
-        return f"{amount} TL"
+    # Selamlama kirpmasi metnin BASINDA calisir ("Merhaba X Bey, ben ... Ada.").
+    # Ilk yayin, selamlama tamamen olusana kadar beklemeli.
+    STREAM_HEAD_MIN_CHARS = 60
 
-    @staticmethod
-    def _time_of(iso_value: str) -> str:
-        if iso_value and "T" in iso_value:
-            return iso_value.split("T")[1][:5]
-        return ""
+    TECHNICAL_FAULT_REPLY = (
+        "Şu anda teknik bir sorun yaşıyorum, kısa süre sonra tekrar deneyebilir misiniz? "
+        "Dilerseniz sizi müşteri temsilcimize de bağlayabilirim."
+    )
 
-    @staticmethod
-    def _mask_email(email: str) -> str:
-        if not email or "@" not in email:
-            return email or ""
-        local, domain = email.split("@", 1)
-        return f"{local[0]}***@{domain}"
+    def _compose_streaming(self, system_prompt: str, user_prompt: str, on_delta,
+                           *, channel: str, is_first_turn: bool) -> str:
+        """Cevabi akitarak uretir; her islenmis parcayi on_delta'ya verir.
 
-    @staticmethod
-    def _speakable_iban(masked_iban: str) -> str:
-        """Maskeli IBAN'i sesli okumaya uygun hale getirir.
-
-        "TR** **** **** **** **44 17" gibi metinler TTS'te felaket okunur;
-        bunun yerine "sonu 44 17 ile biten IBAN" denir.
+        Akis ORTASINDA koparsa o ana kadar yazilan metin ekranda kalir ve
+        sonuna kisa bir ozur eklenir — yazilani silip bastan yazmak
+        kullaniciya daha kotu gelir.
         """
-        digits = re.sub(r"\D", "", masked_iban or "")
-        if len(digits) < 2:
-            return "kayıtlı IBAN"
-        tail = digits[-4:] if len(digits) >= 4 else digits
-        spaced = " ".join(tail[i:i + 2] for i in range(0, len(tail), 2))
-        return f"sonu {spaced} ile biten IBAN"
+        self._last_streamed_text = ""
+        try:
+            for piece in self._stream_polished(
+                    self.llm_client.stream(system_prompt=system_prompt,
+                                           user_prompt=user_prompt),
+                    channel=channel, is_first_turn=is_first_turn):
+                on_delta(piece)
+        except Exception as error:
+            print(f"LLM stream error: {error}")
+            partial = (self._last_streamed_text or "").strip()
+            if partial:
+                tail = " Bağlantıda bir kesinti oldu, dilerseniz tekrar sorayım."
+                on_delta(tail)
+                return partial + tail
+            on_delta(self.TECHNICAL_FAULT_REPLY)
+            return self.TECHNICAL_FAULT_REPLY
+        return self._last_streamed_text or self.TECHNICAL_FAULT_REPLY
+
+    def _polish(self, text: str, *, channel: str, is_first_turn: bool) -> str:
+        """Cevabi sunuma hazirlar (akan ve akmayan yollar AYNI islemi kullanir)."""
+        text = self._remove_redundant_greeting(text, is_first_turn)
+        text = self._normalize_currency_language(text)
+        if channel == "voice":
+            text = self._make_speech_friendly(text)
+        return text
+
+    def _stream_polished(self, pieces, *, channel: str, is_first_turn: bool):
+        """Ham parcalari alir, ISLENMIS metni parca parca yayinlar.
+
+        Yalnizca "kararli" on ek yayinlanir: son STREAM_LOOKAHEAD_CHARS karakter
+        geride bekletilir ki desenler bolunmesin. Sonuc, ekranda hicbir yazinin
+        sonradan degismemesi.
+        """
+        raw = ""
+        emitted = 0
+        threshold = max(self.STREAM_LOOKAHEAD_CHARS, self.STREAM_HEAD_MIN_CHARS)
+
+        for piece in pieces:
+            if not piece:
+                continue
+            raw += piece
+            if len(raw) <= threshold:
+                continue
+
+            # Metni IKI kez isle: biri son parcayi gormeden, biri gorerek.
+            # Ikisinin ORTAK ON EKI, son parcadan ETKILENMEYEN kisimdir —
+            # yalnizca orasi yayinlanabilir.
+            #
+            # Sadece "sondan N karakter geride tut" YETMEZ: kesme noktasi bir
+            # desenin ortasina duserse (ornegin maskeli IBAN'in yarisi) yarim
+            # desen islenir ve ekrana YANLIS metin yazilir.
+            without_tail = self._polish(raw[:-self.STREAM_LOOKAHEAD_CHARS],
+                                        channel=channel, is_first_turn=is_first_turn)
+            with_tail = self._polish(raw, channel=channel, is_first_turn=is_first_turn)
+            safe = self._common_prefix_length(without_tail, with_tail)
+            if safe > emitted:
+                yield with_tail[emitted:safe]
+                emitted = safe
+
+        final = self._polish(raw, channel=channel, is_first_turn=is_first_turn)
+        if len(final) > emitted:
+            yield final[emitted:]
+        # Tam metni cagirana bildir (gecmis/log icin gerekir).
+        self._last_streamed_text = final
+
+    @staticmethod
+    def _common_prefix_length(left: str, right: str) -> int:
+        limit = min(len(left), len(right))
+        index = 0
+        while index < limit and left[index] == right[index]:
+            index += 1
+        return index
+
+    # ------------------------------------------------------------- bellek
+
+    def _lock_for_user(self, user_id: str) -> threading.RLock:
+        with self._structure_lock:
+            lock = self._user_locks.get(user_id)
+            if lock is None:
+                lock = threading.RLock()
+                self._user_locks[user_id] = lock
+            return lock
+
+    def _touch_user(self, user_id: str) -> None:
+        """Kullaniciyi LRU'da one alir ve tavan asilirsa en eskiyi dusurur."""
+        with self._structure_lock:
+            self._user_seen[user_id] = time.monotonic()
+            self._user_seen.move_to_end(user_id)
+            while MAX_ACTIVE_USERS > 0 and len(self._user_seen) > MAX_ACTIVE_USERS:
+                oldest, _ = self._user_seen.popitem(last=False)
+                self._forget_user(oldest)
+
+    def _forget_user(self, user_id: str) -> None:
+        """Bir kullanicinin TUM bellek ici durumunu dusurur.
+
+        Kalici veri DB'de; kullanici geri donerse yeniden yuklenir.
+        """
+        self.user_profiles.pop(user_id, None)
+        self.call_contexts.pop(user_id, None)
+        self._user_locks.pop(user_id, None)
+        suffix = f":{user_id}"
+        for store in (self.conversation_histories, self.planner_transcripts,
+                      self.active_sessions):
+            for key in [k for k in store if k.endswith(suffix)]:
+                store.pop(key, None)
+
+    # ------------------------------------------------------------ formatting
 
     # ---------------------------------------------------------- call context
 
@@ -103,35 +234,97 @@ class AgentOrchestrator:
         }
 
     def _resolve_merchant(self, user_id: str, user_profile: Dict[str, Any]) -> Dict[str, Any] | None:
+        # Operator konsolu bir ISLETME DEGILDIR: hatta kimse yok, dolayisiyla
+        # isletme profili de yuklenmez (yoksa asistan operatore "Mehmet Bey"
+        # diye hitap eder ve baskasinin verisini kendi verisi sanir).
+        if user_profile.get("channel") == OPS_CHANNEL and user_id == OPS_USER_ID:
+            user_profile["merchant_id"] = None
+            user_profile["merchant_display"] = "Moka operasyon ekibi"
+            return None
+
+        # KIMLIK DOGRULANDI MI? Bir isletmeyi GERCEKTEN bu arayana baglayan bir
+        # kanit var mi (panelden secim, kalici kimlik, telefon eslesmesi)? Yoksa
+        # yalnizca demo varsayilanina mi dustuk? Ikisi ayni degil: dogrulanmamis
+        # bir arayana "Mehmet Bey" diye hitap etmek yanlis — o kisi Mehmet degil.
         context = self.call_contexts.get(user_id)
-        merchant_id = (context or {}).get("merchant_id") or user_profile.get("merchant_id")
+        if context and context.get("merchant_id"):
+            # Panelden / cagri baglamindan acikca secildi: dogrulanmis.
+            merchant_id = context["merchant_id"]
+            identity_verified = True
+        else:
+            # Onceki turdan gelen merchant_id'nin dogrulama durumu KORUNUR;
+            # "profilde var" demek "dogrulandi" demek DEGILDIR (bir onceki tur
+            # varsayimla dusmus olabilir).
+            merchant_id = user_profile.get("merchant_id")
+            identity_verified = bool(merchant_id) and user_profile.get("identity_verified", False)
+
+        # Kalici kimlik eslesmesi (identities tablosu): process yeniden baslasa
+        # da arayan-isletme bagi kaybolmaz. user_id GERCEKTEN bir isletmeye
+        # bagliysa bu bir DOGRULAMADIR — onceki turdan/store'dan restore edilen
+        # merchant_id olsa bile teyit eder (aksi halde telefonla taninan musteri
+        # restore sonrasi isimsiz kaliyordu).
+        linked = self.merchant_data.resolve_identity(user_id)
+        if linked:
+            if not merchant_id:
+                merchant_id = linked
+            if linked == merchant_id:
+                identity_verified = True
 
         # WhatsApp: user_id telefon numarasidir; isletmeyi telefonla esle.
+        # Artik indeksli sorgu (eskiden tum listede son-10-hane taramasiydi).
         if not merchant_id and user_profile.get("phone_number"):
-            digits = re.sub(r"\D", "", user_profile["phone_number"])[-10:]
-            for merchant in self.config.merchants:
-                if re.sub(r"\D", "", merchant.get("phone", ""))[-10:] == digits:
-                    merchant_id = merchant["merchant_id"]
-                    break
+            matched = self.merchant_data.find_merchant_by_phone(user_profile["phone_number"])
+            if matched:
+                merchant_id = matched["merchant_id"]
+                identity_verified = True
+
+        # WhatsApp'ta taninmayan arayan -> Gosterim Profili (M-TEST).
+        # WhatsApp yeni kimlik formati "@lid" telefon numarasi DEGILDIR ve
+        # cozulemeyince ham LID kaliyordu; bu hicbir isletmeye eslesmedigi icin
+        # herkes M-1001 (Mehmet Bey) goruyordu. Kimlik kalici baglanir.
+        # DIKKAT: bu bir VARSAYIMDIR, dogrulama DEGIL — isimle hitap edilmez.
+        if not merchant_id and user_profile.get("channel") == "whatsapp":
+            merchant_id = self._whatsapp_default_merchant(user_id)
 
         if not merchant_id:
             merchant_id = DEFAULT_DEMO_MERCHANT_ID
 
         user_profile["merchant_id"] = merchant_id
+        user_profile["identity_verified"] = identity_verified
         merchant = self.merchant_data.get_merchant(merchant_id)
         if merchant:
-            # Panel listeleri (handoff kuyrugu, konusmalar) "call-xxxx" yerine
-            # gercek musteri adini gostersin.
-            user_profile["merchant_display"] = (
-                f"{merchant.get('owner_name')} — {merchant.get('business_name')}"
-            )
+            # Panel listeleri (handoff kuyrugu, konusmalar) icin gorunen ad.
+            # Dogrulanmadiysa isimle degil isletmeyle etiketle — kim oldugunu
+            # bilmiyoruz.
+            if identity_verified:
+                user_profile["merchant_display"] = (
+                    f"{merchant.get('owner_name')} — {merchant.get('business_name')}"
+                )
+            else:
+                user_profile["merchant_display"] = merchant.get("business_name", "")
         return merchant
+
+    def _whatsapp_default_merchant(self, user_id: str) -> str:
+        """WhatsApp'ta taninmayan arayan icin gosterilecek ornek isletme.
+
+        KALICI BAGLAMA YOK: bu bir VARSAYIMDIR, dogrulama degil. Baglasaydik
+        bir sonraki mesajda resolve_identity bunu "dogrulanmis" sanip isimle
+        hitaba donerdi — oysa WhatsApp LID kimin oldugunu soylemiyor. Her mesaj
+        ayni ornek profile duser ve isimsiz kalir.
+        """
+        try:
+            from core import demo_profile
+            demo_profile.ensure_exists(self.merchant_data)
+            return demo_profile.TEST_MERCHANT_ID
+        except Exception as error:
+            print(f"WhatsApp varsayilan profil bulunamadi: {error}")
+            return DEFAULT_DEMO_MERCHANT_ID
 
     def _call_mode(self, user_id: str) -> str:
         return (self.call_contexts.get(user_id) or {}).get("mode", "inbound")
 
     def _build_merchant_profile_block(self, merchant: Dict[str, Any] | None,
-                                      user_id: str) -> str:
+                                      user_id: str, identity_verified: bool = True) -> str:
         if not merchant:
             return ""
         plan = merchant.get("plan") or {}
@@ -139,7 +332,7 @@ class AgentOrchestrator:
         devices = merchant.get("devices") or []
         volumes = merchant.get("monthly_volume_try", [])[-3:]
         volume_line = ", ".join(
-            f"{v['month']}: {self._format_try_amount(v['volume'])}" for v in volumes
+            f"{v['month']}: {format_try_amount(v['volume'])}" for v in volumes
         )
         device_line = "; ".join(
             f"{d['terminal_id']} ({d['model']}, {d['status']}"
@@ -148,17 +341,38 @@ class AgentOrchestrator:
             for d in devices
         ) or "kayitli cihaz yok"
 
+        # Kimlik dogrulanmadiysa (demo varsayilanina dusuldu): isletme verisini
+        # goster ama ARAYANIN kim oldugunu bilmedigimizi soyle — isimle hitap
+        # yasak. Aksi halde tanimadigi herkese "Mehmet Bey" diyordu.
+        if identity_verified:
+            header = "MERCHANT PROFILE (hattaki isletme — kimlik dogrulandi, ASLA tekrar sorma):"
+            salutation_line = (f"- Yetkili: {merchant.get('owner_name')} — "
+                               f"hitap: {merchant.get('salutation', merchant.get('owner_name'))}")
+        else:
+            header = ("MERCHANT PROFILE (ornek/demo isletme — ARAYANIN KIMLIGI "
+                      "DOGRULANMADI):\n"
+                      "- Arayana ISIMLE HITAP ETME (Mehmet Bey deme). Isimsiz, "
+                      "nazik konus: 'Merhaba, size nasil yardimci olabilirim?'\n"
+                      "- Isletme verisini (hakedis, islem, plan) gostermekte "
+                      "sorun yok; yalnizca kisisel hitaptan kacin.")
+            salutation_line = "- Yetkili: (kimlik dogrulanmadi — isim kullanma)"
+
         lines = [
-            "MERCHANT PROFILE (hattaki isletme — kimlik dogrulandi, ASLA tekrar sorma):",
+            header,
             f"- Isletme: {merchant.get('business_name')} ({merchant.get('sector')}, {merchant.get('city')})",
-            f"- Yetkili: {merchant.get('owner_name')} — hitap: {merchant.get('salutation', merchant.get('owner_name'))}",
+            salutation_line,
             f"- Urunler: {', '.join(merchant.get('products', []))}",
             f"- Plan: {plan.get('name')} (%{plan.get('rate_pct')} komisyon"
-            + (f", ayda {self._format_try_amount(plan.get('monthly_fee_try', 0))} sabit ucret" if plan.get('monthly_fee_try') else "")
+            + (f", ayda {format_try_amount(plan.get('monthly_fee_try', 0))} sabit ucret" if plan.get('monthly_fee_try') else "")
             + ")",
             f"- Son 3 ay ciro: {volume_line} (degisim: %{trend.get('change_pct', 0)})",
             f"- Cihazlar: {device_line}",
         ]
+
+        # CRM baglami: agent'in TONUNU ve yaklasimini ayarlamasi icin ic bilgi.
+        # Bunlar musteriye ham soylenmez (skor/segment desifre edilmez); yalnizca
+        # asistan daha baglamsal ve insani davransin diye verilir.
+        lines.extend(self._crm_context_lines(merchant, identity_verified))
 
         context = self.call_contexts.get(user_id) or {}
         if context.get("mode") == "outbound":
@@ -170,6 +384,125 @@ class AgentOrchestrator:
             lines.append(f"- ARAMA HEDEFI (outbound): {goal}")
 
         return "\n".join(lines)
+
+    def _crm_context_lines(self, merchant: Dict[str, Any],
+                           identity_verified: bool) -> List[str]:
+        """Musteri iliskisi baglami: segment/risk farkindaligi + temsilci +
+        son temas. Agent'in TONUNU ayarlamasi icin ic bilgi; musteriye ham
+        rakam/skor SOYLENMEZ (profil bloguna 'ic bilgi' notu ile girer)."""
+        lines: List[str] = []
+
+        manager = merchant.get("account_manager")
+        tier = merchant.get("tier")
+        if manager:
+            tier_part = f", {tier} musteri" if tier else ""
+            lines.append(
+                f"- Atanmis temsilci: {manager}{tier_part} "
+                "(devir gerekirse musteri bu temsilciye baglanir).")
+
+        # Segment/risk: yalnizca DAVRANIS ipucu; ham skor degil.
+        try:
+            risk = self.merchant_data.risk_profile(merchant)
+        except Exception:
+            risk = {}
+        segment = risk.get("segment")
+        if segment in ("uyuyan", "daralıyor"):
+            reasons = risk.get("reasons") or []
+            reason_hint = f" Analiz: {'; '.join(reasons)}." if reasons else ""
+            lines.append(
+                "- ILISKI DURUMU (ic bilgi, musteriye SKOR/SEGMENT soyleme): islem "
+                f"hacmi {segment}.{reason_hint} Musteri ASIL konuyu cozup kapatmaya "
+                "gecince, 'baska bir konu var mi' demek YERINE, YUKARIDAKI GERCEK "
+                "VERIYE BAK (son 3 ay ciro serisi + cihaz durumu/notu) ve BIR KEZ, "
+                "duruma OZEL kendi cumlelerinle anlayisla degin — ASLA sabit kalip "
+                "kullanma. Dusus cihaz arizasiyla ortusuyorsa ikisini bagla (or. "
+                "'cihaz kapali kaldigi icin islemler durmus olabilir'); ortusmuyorsa "
+                "hangi ay ne kadar dustugunu somut gozlemleyip nazikce sebebini sor. "
+                "Israr etme, satis baskisi yapma; musteri acele/kizginsa zorlamadan kapat.")
+        elif segment == "büyüyor":
+            lines.append(
+                "- ILISKI DURUMU (ic bilgi): isler aciliyor, buyuyen musteri. Ciro "
+                "verisindeki artisi FARK ET ve uygunsa somut, icten bir cumleyle "
+                "takdir et (sabit kalip degil, gercek rakama deginerek).")
+
+        # Son temas + gecmis CRM notlari: yalnizca kimlik dogrulanmis aramalarda.
+        if identity_verified and merchant.get("merchant_id"):
+            merchant_id = merchant["merchant_id"]
+            try:
+                recent = self.merchant_data.list_contacts(merchant_id, limit=1)
+            except Exception:
+                recent = []
+            if recent:
+                contact = recent[0]
+                lines.append(
+                    f"- Son temas: {(contact.get('contacted_at') or '')[:10]} "
+                    f"({contact.get('channel', '')}, {contact.get('subject', '')}). "
+                    "Uygunsa buna kisaca deginebilirsin.")
+
+            # Agent'in daha once bu musteriden ogrendigi KALICI bilgiler —
+            # kapali dongunun geri besleme ayagi: musteriyi gercekten hatirla.
+            try:
+                insights = self.merchant_data.list_insights(merchant_id, limit=3)
+            except Exception:
+                insights = []
+            if insights:
+                notes = "; ".join(
+                    f"{i.get('subject', '')}: {i.get('note', '')}" for i in insights)
+                lines.append(
+                    "- HATIRLANANLAR (bu musteri hakkinda daha once ogrenildi): "
+                    f"{notes}. Ilgiliyse dogal sekilde hatirla, ayni seyi tekrar sorma.")
+        return lines
+
+    # Otomatik temas gunlugune yazILMAYAN araclar: bunlar tek basina "anlamli
+    # konusma" saymaz (selam/hafiza/not). Digerleri (hakedis, islem, ariza,
+    # ekstre, teklif, devir) anlamli sayilir.
+    _TRIVIAL_TOOLS = {"answer_general", "update_customer_card", "record_crm_note"}
+
+    def _log_crm_contact(self, merchant: Dict[str, Any] | None, session_id: str,
+                         channel: str, user_profile: Dict[str, Any],
+                         ai_notes: Dict[str, Any], ai_summary: str,
+                         router_decision: Dict[str, Any]) -> None:
+        """Anlamli bir konusma turunun ozetini isletme-360 temas gunlugune yazar.
+
+        Bir OTURUM = tek temas kaydi (upsert): konusma ilerledikce ozet zenginlesir.
+        Selam/tesekkur gibi bos turlar ATLANIR. Yalnizca kimligi dogrulanmis
+        aramalar kaydedilir (kime ait oldugu belli)."""
+        if not merchant or not merchant.get("merchant_id") or not session_id:
+            return
+        if not user_profile.get("identity_verified"):
+            return
+        tools_used = {t.get("name") for t in (router_decision.get("tools") or [])
+                      if isinstance(t, dict)}
+        substantive = bool(tools_used - self._TRIVIAL_TOOLS)
+        if not (substantive or ai_notes.get("issue") or ai_notes.get("handoff_required")):
+            return   # bos tur — kaydetme
+
+        subject = (ai_notes.get("issue")
+                   or self._contact_subject_from_tools(tools_used)
+                   or "Görüşme")
+        note = ai_summary if (ai_summary and "kayda değer" not in ai_summary) \
+            else (ai_notes.get("issue") or subject)
+        self.merchant_data.upsert_session_contact(
+            merchant["merchant_id"], session_id,
+            channel=channel, subject=str(subject)[:80], note=str(note)[:300])
+
+        # Konusmada cikan SATIS FIRSATI: admin ai_notes'ta kaliyordu, merchant
+        # CRM'e (360/rapor) akmiyordu. Ayri bir 'fırsat' icgorusu olarak dusur
+        # (oturum basina tek, guncellenir).
+        card = user_profile.get("card") or {}
+        opportunity = card.get("upsell_opportunity")
+        if opportunity:
+            self.merchant_data.upsert_session_insight(
+                merchant["merchant_id"], session_id, "fırsat",
+                str(opportunity)[:200], channel=channel)
+
+    def _contact_subject_from_tools(self, tools_used) -> str:
+        """Anlamli araclardan panel etiketi turetir (konu basligi icin)."""
+        labels = panel_tool_labels()
+        for name in tools_used:
+            if name not in self._TRIVIAL_TOOLS and name in labels:
+                return labels[name]
+        return ""
 
     def _build_merchant_router_line(self, merchant: Dict[str, Any] | None,
                                     user_id: str) -> str:
@@ -193,11 +526,8 @@ class AgentOrchestrator:
     def _get_user_profile(self, user_id: str) -> Dict[str, Any]:
         if user_id not in self.user_profiles:
             self.user_profiles[user_id] = {
-                "slots": {},
-                "intents": [],
                 "conversation_focus": None,
                 "handoff_reason": None,
-                "urgency": None,
                 "merchant_id": None,
                 "pending_offer": None,
                 "offer_made": False,
@@ -214,15 +544,54 @@ class AgentOrchestrator:
         if not ai_notes:
             return
 
-        user_profile["conversation_focus"] = ai_notes.get("conversation_focus")
-        user_profile["urgency"] = ai_notes.get("urgency")
-        user_profile["handoff_reason"] = ai_notes.get("handoff_reason")
         user_profile["merchant_id"] = ai_notes.get("merchant_id")
-        user_profile["pending_offer"] = ai_notes.get("pending_offer")
-        if isinstance(ai_notes.get("card"), dict):
-            user_profile["card"] = ai_notes["card"]
+
+        # GORUSMEYE OZEL durum (kart, odak, bekleyen teklif, tekrar korumalari)
+        # kosulsuz geri yuklenMEZ: hepsi kaydedildigi OTURUMA aittir.
+        #
+        # Aksi halde yeni bir konusma eski konusmanin baglamiyla basliyordu —
+        # "selam" diyen musteriye, kendisinin hic soylemedigi bir tutarin
+        # tarihi soruluyordu (kart "44.104 TL biliniyor, tarih eksik" diyordu).
+        user_profile["_restored_state"] = {
+            "session_id": ai_notes.get("guard_session_id"),
+            "card": ai_notes.get("card") if isinstance(ai_notes.get("card"), dict) else None,
+            "conversation_focus": ai_notes.get("conversation_focus"),
+            "handoff_reason": ai_notes.get("handoff_reason"),
+            "pending_offer": ai_notes.get("pending_offer"),
+            "offer_made": bool(ai_notes.get("offer_made")),
+            "once_tools": list(ai_notes.get("once_tools") or []),
+        }
         user_profile["resumed_from_store"] = True
         user_profile["resume_summary"] = self._build_resume_summary_from_notes(ai_notes)
+
+    def _apply_restored_state(self, user_profile: Dict[str, Any], session_id: str) -> None:
+        """DB'den gelen GORUSME DURUMUNU yalnizca AYNI oturuma uygular.
+
+        Iki yonlu hata var, ikisini de kapatir:
+          - Hic saklanmazsa: surec yeniden baslayinca ayni gorusmede musteri
+            kartini ve tekrar korumalarini kaybederiz (ikinci ekstre gider).
+          - Kosulsuz saklanirsa: YENI konusma eskisinin baglamiyla baslar —
+            "selam" diyene eski bir tutarin tarihi sorulur — ve musteri bir
+            daha hic ekstre alamaz.
+
+        Kimlik (merchant_id) bunun DISINDADIR: o gorusmeye degil kisiye aittir.
+        """
+        user_profile["session_id"] = session_id
+        restored = user_profile.pop("_restored_state", None)
+        if not restored:
+            return
+        if restored.get("session_id") != session_id:
+            return      # yeni gorusme: eski baglam tasinmaz
+
+        if restored.get("card"):
+            user_profile["card"] = restored["card"]
+        user_profile["conversation_focus"] = restored.get("conversation_focus")
+        user_profile["handoff_reason"] = restored.get("handoff_reason")
+        user_profile["pending_offer"] = restored.get("pending_offer")
+        if restored.get("offer_made"):
+            user_profile["offer_made"] = True
+        for tool_name in restored.get("once_tools") or []:
+            user_profile[f"_once_{tool_name}"] = True
 
     def _session_key(self, user_id: str, channel: str) -> str:
         return f"{channel}:{user_id}"
@@ -256,8 +625,6 @@ class AgentOrchestrator:
                 history.append({
                     "role": "user",
                     "text": user_text,
-                    "intents": self.intent_parser.parse(user_text),
-                    "slots": self.slot_mapper.extract(user_text),
                 })
             if agent_text:
                 history.append({"role": "agent", "text": agent_text})
@@ -266,7 +633,11 @@ class AgentOrchestrator:
     def _get_session_id(self, user_id: str, channel: str) -> str:
         key = self._session_key(user_id, channel)
         if key not in self.active_sessions:
-            existing = self.admin_store.get_latest_session_id_for_user(user_id, channel)
+            # Uzun sessizlikten sonra YENI gorusme baslar. Aksi halde WhatsApp
+            # oturumu sonsuza kadar yasar ve "gorusme basina bir kez" calisan
+            # araclar (ekstre, teklif, devir) bir daha hic calismaz.
+            existing = self.admin_store.get_latest_session_id_for_user(
+                user_id, channel, max_idle_hours=SESSION_IDLE_HOURS)
             self.active_sessions[key] = existing or str(uuid.uuid4())
         return self.active_sessions[key]
 
@@ -279,53 +650,40 @@ class AgentOrchestrator:
         ve kullanici profilini temizler."""
         key = self._session_key(user_id, channel)
         self.conversation_histories[key] = []
+        self.planner_transcripts[key] = []
         self.active_sessions[key] = str(uuid.uuid4())
         self.user_profiles.pop(user_id, None)
 
     # ----------------------------------------------------------- extraction
 
-    def _extract_urgency(self, text: str) -> str | None:
-        lowered = text.lower()
-        if any(keyword in lowered for keyword in ("acil", "hemen", "şu an", "su an", "müşteri bekliyor", "musteri bekliyor")):
-            return "high"
-        return None
+    def _build_resume_prompt_block(self, user_profile: Dict[str, Any],
+                                   channel: str, is_first_turn: bool) -> str:
+        """Donen WhatsApp musterisi icin composer'a RESUME BAGLAMI verir.
 
-    def _update_user_profile_from_tool_args(self, user_profile: Dict[str, Any], tool_args: Dict[str, Any]) -> None:
-        for key in ("amount_try", "date", "card_last4", "terminal_id", "symptom"):
-            if key in tool_args and tool_args[key] is not None:
-                user_profile["slots"][key] = tool_args[key]
-
-    def _update_user_profile_from_text(self, user_profile: Dict[str, Any], user_input: str) -> None:
-        urgency = self._extract_urgency(user_input)
-        if urgency:
-            user_profile["urgency"] = urgency
-
-    # ------------------------------------------------------ summaries/notes
-
-    def _prepend_resume_summary(self, text: str, user_profile: Dict[str, Any], channel: str, is_first_turn: bool) -> str:
+        Eskiden cevap uretildikten SONRA basina string yapistiriliyordu
+        ('Tekrar merhaba, ...') — bu selamlamayi yarim kesip 'ben Ada' ile
+        bozuk birlestiriyordu. Artik LLM'e baglam olarak verilir; model dogal,
+        tek akici bir cumle uretir. Blok YALNIZCA bir kez uygulanir."""
         if channel != "whatsapp" or not is_first_turn:
-            return text
+            return ""
         if not user_profile.get("resumed_from_store") or not user_profile.get("resume_summary"):
-            return text
-
+            return ""
         summary = user_profile["resume_summary"].rstrip(".")
-        cleaned_text = re.sub(
-            r"^\s*(merhaba|selam|merhabalar|selamlar)[,!\.\s]+",
-            "",
-            text.strip(),
-            flags=re.IGNORECASE,
-        ).strip()
-        user_profile["resumed_from_store"] = False
-        if cleaned_text:
-            cleaned_text = cleaned_text[0].lower() + cleaned_text[1:] if len(cleaned_text) > 1 else cleaned_text.lower()
-            return f"Tekrar merhaba, {summary.lower()}. {cleaned_text}"
-        return f"Tekrar merhaba, {summary.lower()}."
+        user_profile["resumed_from_store"] = False   # bir kez uygula
+        return (
+            "RESUME CONTEXT (WhatsApp — donen musteri, ilk mesaj):\n"
+            f"- Onceki gorusmede: {summary}.\n"
+            "- Ilk cumlende bunu DOGAL ve TEK bir akici cumlede hatirlat, sonra "
+            "bugun nasil yardimci olabilecegini sor. Ornek ritim: 'Merhaba, gecen "
+            "sefer ... konusmustuk; bugun nasil yardimci olabilirim?' (kimlik "
+            "dogrulandiysa uygun hitabi kullan).\n"
+            "- Kendini YENIDEN TANITMA ('ben Ada', 'Moka United'dan' deme) — "
+            "musteri seni zaten taniyor. Iki ayri selam cumlesi kurma."
+        )
 
     def _build_ai_notes_payload(
         self,
         user_profile: Dict[str, Any],
-        current_intents: List[str],
-        current_slots: Dict[str, Any],
         router_decision: Dict[str, Any],
         context: Dict[str, Any],
         user_input: str,
@@ -339,17 +697,24 @@ class AgentOrchestrator:
             "merchant_id": user_profile.get("merchant_id"),
             "issue": card.get("issue"),
             "mood": card.get("mood"),
-            "amount_mentioned_try": card.get("amount_mentioned_try") or user_profile["slots"].get("amount_try"),
-            "date_mentioned": card.get("date_mentioned") or user_profile["slots"].get("date"),
-            "terminal_id": card.get("terminal_id") or user_profile["slots"].get("terminal_id"),
-            "urgency": user_profile.get("urgency"),
+            "amount_mentioned_try": card.get("amount_mentioned_try"),
+            "date_mentioned": card.get("date_mentioned"),
+            "terminal_id": card.get("terminal_id"),
             "conversation_focus": user_profile.get("conversation_focus"),
-            "current_intents": sorted(set(current_intents)),
             "handoff_required": bool(handoff.get("required")),
             "handoff_reason": handoff.get("reason") or user_profile.get("handoff_reason"),
             "last_router_tool": router_decision.get("tool"),
             "pending_offer": user_profile.get("pending_offer"),
             "card": user_profile.get("card"),
+            # Tekrar korumasi: surec yeniden baslarsa "bu gorusmede zaten
+            # ekstre gonderildi / teklif sunuldu" bilgisi kaybolmasin. Oturum
+            # kimligiyle birlikte saklanir; YENI gorusmede uygulanmaz.
+            "guard_session_id": user_profile.get("session_id"),
+            "offer_made": bool(user_profile.get("offer_made")),
+            "once_tools": sorted(
+                key[len("_once_"):] for key in user_profile
+                if key.startswith("_once_") and user_profile[key]
+            ),
         }
 
         return {key: value for key, value in ai_notes.items() if value not in (None, "", [], {})}
@@ -359,23 +724,14 @@ class AgentOrchestrator:
 
         if ai_notes.get("issue"):
             parts.append(f"konu: {ai_notes['issue']}")
-        tool_map = {
-            "get_settlement_status": "hakedis sorgulandi",
-            "find_transaction": "islem sorgulandi",
-            "troubleshoot_pos": "cihaz arizasi calisildi",
-            "explain_fees": "komisyon aciklandi",
-            "send_statement": "ekstre gonderildi",
-            "create_payment_link": "odeme linki olusturuldu",
-            "recommend_offer": "teklif sunuldu",
-            "trigger_handoff": "insana devredildi",
-        }
+        # Etiketler registry'den turetilir: eskiden burada elle yazilmis bir
+        # sozluk vardi ve 'answer_general' eksikti.
+        labels = panel_tool_labels()
         tool = ai_notes.get("last_router_tool")
-        if tool in tool_map:
-            parts.append(tool_map[tool])
+        if tool in labels:
+            parts.append(labels[tool])
         if ai_notes.get("mood") in ("gergin", "kizgin", "kızgın"):
             parts.append(f"musteri {ai_notes['mood']}")
-        if ai_notes.get("urgency") == "high":
-            parts.append("durum acil")
         if ai_notes.get("handoff_required"):
             reason = ai_notes.get("handoff_reason") or ""
             parts.append(f"insan devri gerekti{': ' + reason if reason else ''}")
@@ -475,7 +831,7 @@ class AgentOrchestrator:
         # Maskeli IBAN blogu -> "sonu XX YY ile biten IBAN" (son rakamda biter,
         # kuyruktaki boslugu yutmaz)
         def _iban_repl(match: re.Match) -> str:
-            return self._speakable_iban(match.group(0))
+            return speakable_iban(match.group(0))
         cleaned = re.sub(r"TR[*\d][*\d ]{9,}\d", _iban_repl, cleaned)
         # Maskeli kart: "(kart) **** 4832" -> "4832 ile biten kart"
         cleaned = re.sub(r"(?:kart[ıi]?\s+)?\*{2,}[\s*]*(\d{4})", r"\1 ile biten kart", cleaned)
@@ -512,9 +868,9 @@ class AgentOrchestrator:
             if value in (None, "", [], {}):
                 continue
             if key == "amount_mentioned_try":
-                parsed = self._parse_amount_text(value)
+                parsed = parse_amount_text(value)
                 if parsed is not None:
-                    value = self._format_try_amount(parsed)
+                    value = format_try_amount(parsed)
             lines.append(f"- {label}: {value}")
 
         for change in card.get("changed") or []:
@@ -539,18 +895,23 @@ class AgentOrchestrator:
         values = {
             "Isletme ve yetkili (hattan dogrulandi)": user_profile.get("merchant_id"),
             "Sorun": card.get("issue"),
-            "Tutar": card.get("amount_mentioned_try") or user_profile["slots"].get("amount_try"),
-            "Tarih": card.get("date_mentioned") or user_profile["slots"].get("date"),
+            "Tutar": card.get("amount_mentioned_try"),
+            "Tarih": card.get("date_mentioned"),
         }
-        known = [label for label, value in values.items() if value not in (None, "", [], {})]
-        missing = [label for label, value in values.items() if value in (None, "", [], {})]
+        known = [f"{label}: {value}" for label, value in values.items()
+                 if value not in (None, "", [], {})]
         return (
-            "ELIMDEKI BILGILER (yapisal envanter):\n"
-            f"- BILINEN: {', '.join(known) if known else 'yok'}\n"
-            f"- EKSIK: {', '.join(missing) if missing else 'yok — her sey elimizde'}\n"
-            "Kural: Yapacagin is icin once bu envantere bak. Bilgiler YETERLIyse hic soru "
-            "sormadan ilerle. Yetersizse SADECE EKSIK listesinden, tek seferde EN FAZLA BIR "
-            "bilgi iste. BILINEN listesindeki hicbir seyi musteriye tekrar sorma."
+            "GORUSMEDE GECENLER (yalnizca hatirlatma):\n"
+            f"- {chr(10).join('- ' + item for item in known) if known else 'henuz bir sey gecmedi'}\n"
+            "\n"
+            "KURAL — SORMA, BAK:\n"
+            "Musteriye VERI SORMA. Tutar, tarih, islem, hakedis, cihaz, komisyon "
+            "bilgisi SENDE: araclarla ARA. Musteri bir tutar soyledi diye tarihini "
+            "sorma — o tutarla arama yap, cikanlari kendisine goster.\n"
+            "Musteriye yalnizca SENDE OLMAYAN seyler sorulur: bir TERCIH (hangi "
+            "kanal, hangi tutar icin link) ya da arama birden fazla sonuc verdiginde "
+            "AYIRT EDICI bir ayrinti. Bunlar da tek seferde bir tane.\n"
+            "Yukaridakiler zaten konusuldu; tekrar sorma."
         )
 
     # ----------------------------------------------------------- prompts
@@ -596,79 +957,16 @@ class AgentOrchestrator:
             "already told you, and never ask for info the card already has."
         )
 
-    @staticmethod
-    def _parse_amount_text(value: Any) -> float | None:
-        """"1.250", "1,250.50", "1250" gibi metinleri tutara cevirir.
-
-        Kural: hem nokta hem virgul varsa SONUNCUSU ondaliktir; tek tur ayrac
-        tam 3 hanelik grup(lar) ayiriyorsa binliktir ("1.250" -> 1250),
-        1-2 hane ayiriyorsa ondaliktir ("500,5" -> 500.5). (Hakem #1 devami:
-        ilk coercion "1.250"u 1.25 yapiyordu.)
-        """
-        if value is None or isinstance(value, (int, float)):
-            return float(value) if value is not None else None
-        text = str(value).strip().replace(" ", "").replace("TL", "").replace("₺", "")
-        if not text:
-            return None
-        if "." in text and "," in text:
-            if text.rfind(",") > text.rfind("."):
-                text = text.replace(".", "").replace(",", ".")  # 1.250,50
-            else:
-                text = text.replace(",", "")                     # 1,250.50
-        elif "." in text or "," in text:
-            sep = "." if "." in text else ","
-            head, *groups = text.split(sep)
-            if groups and all(len(g) == 3 for g in groups):
-                text = head + "".join(groups)                    # binlik: 1.250(.000)
-            else:
-                text = text.replace(",", ".")                    # ondalik: 500,5
-        try:
-            return float(text)
-        except ValueError:
-            return None
-
-    @classmethod
-    def _coerce_numeric_args(cls, tool_args: Dict[str, Any]) -> Dict[str, Any]:
-        """Router LLM sayilari bazen string dondurur; dispatch'e girmeden
-        float'a cevir, cevrilemiyorsa at (hakem bulgusu #1/#2)."""
-        coerced = dict(tool_args)
-        for key in ("amount_try",):
-            if key in coerced and not isinstance(coerced[key], (int, float, type(None))):
-                coerced[key] = cls._parse_amount_text(coerced[key])
-        return coerced
-
-    def _merge_contextual_filters(
-        self,
-        tool_name: str,
-        tool_args: Dict[str, Any],
-        current_slots: Dict[str, Any],
-        user_profile: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Carry regex-extracted slots into tool args as a semantic backup: the STT
-        or router may miss an amount/date the regex caught (and vice versa).
-        """
-        if tool_name != "find_transaction":
-            return tool_args
-
-        merged_args = dict(tool_args)
-        for source in (current_slots, user_profile.get("slots", {})):
-            for key in ("amount_try", "date", "card_last4"):
-                if merged_args.get(key) in (None, "") and source.get(key) not in (None, ""):
-                    merged_args[key] = source[key]
-        return merged_args
-
     def _run_router_step(
         self,
         *,
         user_input: str,
         user_profile: Dict[str, Any],
         current_history: List[Dict[str, Any]],
-        current_slots: Dict[str, Any],
         merchant_block: str,
     ) -> tuple[str, Dict[str, Any], Dict[str, Any]]:
         """Arac secimini tamamen router LLM'e birakir; kural tabanli override yoktur."""
-        router_prompt = get_router_system_prompt()
+        router_prompt = build_router_system_prompt()
         router_user_prompt = self._build_router_user_prompt(
             user_input, user_profile, current_history, merchant_block
         )
@@ -693,405 +991,288 @@ class AgentOrchestrator:
 
         if not isinstance(tool_args, dict):
             tool_args = {}
-        tool_args = self._coerce_numeric_args(tool_args)
-        tool_args = self._merge_contextual_filters(tool_name, tool_args, current_slots, user_profile)
+        # Tip duzeltmesi artik registry'de (tools.coerce_args), run_tool icinde.
         router_decision["args"] = tool_args
-        self._update_user_profile_from_tool_args(user_profile, tool_args)
+        # Slot yazimi kaldirildi: hafizanin tek kaynagi artik musteri kartidir.
 
         if tool_name == "trigger_handoff":
             user_profile["handoff_reason"] = tool_args.get("reason", "")
 
         return tool_name, tool_args, router_decision
 
-    # ------------------------------------------------------- tool handlers
+    @property
+    def planner(self) -> ToolPlanner:
+        """Planlayici GEC baglanir.
 
-    def _handle_settlement(self, response_builder: ResponseBuilder,
-                           merchant: Dict[str, Any], tool_args: Dict[str, Any]) -> None:
-        period = tool_args.get("period") or "latest"
-        merchant_id = merchant["merchant_id"]
-        rows = self.merchant_data.get_settlements_for_period(merchant_id, period)
+        Kurulumda sabitlenirse llm_client sonradan degistirildiginde (testler,
+        model degisimi) eski istemci kullanilmaya devam ederdi.
+        """
+        return ToolPlanner(self.llm_client, self.run_tool)
 
-        if not rows:
-            response_builder.add_fact("Bu dönem için hakediş kaydı bulunamadı.")
-            return
+    # ----------------------------------------------------------- agent loop
 
-        response_builder.set_settlement(rows[0])
-        response_builder.set_settlements(rows[:3])
+    def _get_planner_transcript(self, user_id: str, channel: str) -> List[Dict[str, Any]]:
+        """Planlayicinin KALICI konusma transkripti.
 
-        for settlement in rows[:2]:
-            day = describe_day(settlement.get("payout_eta", ""))
-            time = self._time_of(settlement.get("payout_eta", ""))
-            batch_day = describe_day(settlement.get("batch_date", ""))
-            net = self._format_try_amount(settlement.get("net_try", 0))
-            gross = self._format_try_amount(settlement.get("gross_try", 0))
-            commission = self._format_try_amount(settlement.get("commission_try", 0))
-            status = settlement.get("status")
-            speak_iban = self._speakable_iban(settlement.get("iban_masked", ""))
-            if status == "ödendi":
-                response_builder.add_fact(
-                    f"{batch_day} tarihli satışların hakedişi ödendi: brüt {gross}, "
-                    f"komisyon {commission}, net {net} ({speak_iban} hesabınıza)."
-                )
-            elif status == "planlandı":
-                response_builder.add_fact(
-                    f"{batch_day} tarihli satışların hakedişi: brüt {gross}, komisyon {commission}, "
-                    f"net {net}. Ödeme {day} saat {time}'de {speak_iban} hesabınıza planlandı."
-                )
-            else:  # beklemede
-                note = settlement.get("note") or "banka tarafında doğrulama bekleniyor"
-                response_builder.add_fact(
-                    f"DİKKAT: {batch_day} tarihli {net} tutarındaki hakediş hâlâ beklemede ({note}). "
-                    "Dürüstçe kabul et, gecikme için özür dile ve temsilciye eskalasyon öner."
-                )
+        Onceki surumde her turda sifirdan kuruluyordu: yalnizca duz metin
+        mesajlar veriliyor, onceki turun arac cagrilari ve ARAC SONUCLARI
+        atiliyordu. Model "gecen tur ne ogrendigini" asistanin prozasindan
+        cikarmak zorunda kaliyor, bu yuzden ayni araci tekrar tekrar cagiriyordu.
 
-    def _handle_find_transaction(self, response_builder: ResponseBuilder,
-                                 merchant: Dict[str, Any], tool_args: Dict[str, Any]) -> None:
-        merchant_id = merchant["merchant_id"]
-        amount = tool_args.get("amount_try")
-        on_date = tool_args.get("date")
-        card_last4 = tool_args.get("card_last4")
-        status = tool_args.get("status")
+        Artik transkript birikiyor: user -> assistant(tool_calls) -> tool(...)
+        -> assistant(cevap) zinciri oldugu gibi korunur.
+        """
+        key = self._session_key(user_id, channel)
+        if key not in self.planner_transcripts:
+            self.planner_transcripts[key] = self._hydrate_transcript_from_store(
+                user_id, channel)
+        return self.planner_transcripts[key]
 
-        rows = self.merchant_data.find_transactions(
-            merchant_id,
-            amount_try=amount,
-            on_date=on_date,
-            card_last4=card_last4,
-            status=status,
-        )
+    def _hydrate_transcript_from_store(self, user_id: str, channel: str,
+                                       max_turns: int = 10) -> List[Dict[str, Any]]:
+        """Surec yeniden baslarsa transkripti DB'den kurar.
 
-        if rows:
-            response_builder.set_transactions(rows[:3])
-            txn = rows[0]
-            day = describe_day(txn.get("timestamp", ""))
-            time = self._time_of(txn.get("timestamp", ""))
-            response_builder.add_fact(
-                f"İşlem bulundu: {self._format_try_amount(txn.get('amount_try', 0))}, {day} saat {time}, "
-                f"{txn.get('card_last4')} ile biten kart, durum: {txn.get('status')}."
-            )
-            settlement = self.merchant_data.get_settlement_for_transaction(txn)
-            if settlement:
-                pay_day = describe_day(settlement.get("payout_eta", ""))
-                pay_time = self._time_of(settlement.get("payout_eta", ""))
-                if settlement.get("status") == "ödendi":
-                    response_builder.add_fact(
-                        f"Bu işlem {settlement.get('batch_id')} hakediş grubundaydı ve ödendi "
-                        f"(net {self._format_try_amount(settlement.get('net_try', 0))})."
-                    )
-                else:
-                    response_builder.add_fact(
-                        f"Para kaybolmadı: işlem {settlement.get('batch_id')} hakediş grubunda; "
-                        f"ödeme {pay_day} saat {pay_time}'de hesaba geçecek. Müşteriyi rahatlat."
-                    )
-        else:
-            response_builder.add_fact("Belirtilen kriterlerle işlem bulunamadı.")
-            if amount is not None:
-                nearby = self.merchant_data.find_transactions(merchant_id, on_date=on_date, limit=3)
-                if nearby:
-                    amounts = ", ".join(self._format_try_amount(t.get("amount_try", 0)) for t in nearby)
-                    response_builder.add_fact(
-                        f"Yakın zamanda şu tutarlarda işlemler var: {amounts}. Tutarı teyit ettir."
-                    )
-
-    def _handle_troubleshoot(self, response_builder: ResponseBuilder,
-                             merchant: Dict[str, Any], tool_args: Dict[str, Any],
-                             user_profile: Dict[str, Any], user_id: str) -> None:
-        symptom = tool_args.get("symptom") or (user_profile.get("card") or {}).get("issue") or ""
-        step_result = tool_args.get("step_result")
-        devices = merchant.get("devices") or []
-        device = None
-        if tool_args.get("terminal_id"):
-            device = next((d for d in devices if d["terminal_id"] == tool_args["terminal_id"]), None)
-        if device is None and devices:
-            device = devices[0]
-        if device:
-            response_builder.set_device(device)
-
-        if step_result == "resolved":
-            response_builder.add_fact("Sorun giderildi olarak işaretlendi. Kısaca sevindiğini söyle ve başka ihtiyacı olup olmadığını sor.")
-            user_profile["conversation_focus"] = "resolved"
-            return
-
-        if step_result == "not_resolved":
-            terminal = device.get("terminal_id") if device else "cihaz"
-            model = device.get("model", "") if device else ""
-            try:
-                task_id = self.admin_store.create_task(
-                    title=f"Servis: {terminal} {model} değişimi — {merchant.get('business_name')}",
-                    user_id=user_id,
-                )
-                response_builder.add_fact(
-                    f"Denenen adımlar işe yaramadı. Servis kaydı oluşturuldu (görev #{task_id}): "
-                    "cihaz 2 iş günü içinde yenisiyle değiştirilecek."
-                )
-            except Exception as error:
-                print(f"Service task warning: {error}")
-                response_builder.add_fact(
-                    "Denenen adımlar işe yaramadı. Servis kaydı oluşturuldu: cihaz 2 iş günü içinde değiştirilecek."
-                )
-            response_builder.add_fact(
-                "FIRSAT: Cihaz değişene kadar satış kaçırmasın — telefonuna hemen bir ödeme linki "
-                "tanımlayabileceğini söyle; müşterileri karttan linkle ödeyebilir. Kabul ederse link oluşturulacak."
-            )
-            user_profile["pending_offer"] = {"trigger": "pos_out_of_service"}
-            user_profile["conversation_focus"] = "pos_service"
-            return
-
-        kb = self.merchant_data.match_kb(symptom)
-        if kb:
-            response_builder.set_kb_steps(kb.get("steps", []))
-            response_builder.add_fact(f"Arıza eşleşti: {kb.get('title')}.")
-            response_builder.add_fact(
-                "Adımları TEK TEK ver: önce ilk adımı söyle, denemesini iste. Hepsini birden sayma."
-            )
-            user_profile["conversation_focus"] = "pos_troubleshooting"
-        else:
-            response_builder.add_fact(
-                "Bilinen arıza kaydı eşleşmedi. Cihazı kapatıp 30 saniye sonra açmasını öner; "
-                "düzelmezse servis kaydı açılacağını söyle."
-            )
-
-    def _handle_explain_fees(self, response_builder: ResponseBuilder,
-                             merchant: Dict[str, Any], tool_args: Dict[str, Any],
-                             user_profile: Dict[str, Any]) -> None:
-        summary = self.merchant_data.monthly_summary(merchant["merchant_id"])
-        plan = merchant.get("plan") or {}
-        response_builder.set_plan_info({"plan": plan, "monthly_summary": summary})
-        fee_note = (
-            f", ayda {self._format_try_amount(plan.get('monthly_fee_try', 0))} sabit ücret"
-            if plan.get("monthly_fee_try") else ", sabit ücret yok"
-        )
-        response_builder.add_fact(
-            f"Mevcut plan: {plan.get('name')} — işlem başına %{plan.get('rate_pct')} komisyon{fee_note}."
-        )
-        if summary:
-            response_builder.add_fact(
-                f"Bu ay ({summary.get('month')}): ciro {self._format_try_amount(summary.get('gross_try', 0))}, "
-                f"kesilen komisyon yaklaşık {self._format_try_amount(summary.get('commission_try', 0))}."
-            )
-
-        upgrade = self.merchant_data.get_upgrade_candidate(merchant)
-        if upgrade:
-            trend = merchant.get("volume_trend") or {}
-            plan_new = upgrade["plan"]
-            saving = self._format_try_amount(upgrade["monthly_saving_try"])
-            response_builder.set_offer({
-                "trigger": "volume_growth",
-                "plan": plan_new,
-                "monthly_saving_try": upgrade["monthly_saving_try"],
-            })
-            response_builder.add_fact(
-                f"FIRSAT: Ciro son dönemde belirgin büyümüş (%{trend.get('change_pct', 0)}). "
-                f"{plan_new.get('name')} planına geçerse komisyon %{plan_new.get('rate_pct')}'e düşer, "
-                f"ayda yaklaşık {saving} cebinde kalır. Açıklamayı bitirdikten SONRA bunu tek cümleyle öner."
-            )
-            user_profile["pending_offer"] = {
-                "trigger": "volume_growth",
-                "plan_id": plan_new.get("plan_id"),
-                "monthly_saving_try": upgrade["monthly_saving_try"],
-            }
-
-    def _handle_send_statement(self, response_builder: ResponseBuilder,
-                               merchant: Dict[str, Any], tool_args: Dict[str, Any],
-                               user_id: str) -> None:
-        period = tool_args.get("period") or "this_month"
-        month = None
-        if period == "last_month":
-            from datetime import date
-            today = date.today()
-            prev = date(today.year - 1, 12, 1) if today.month == 1 else date(today.year, today.month - 1, 1)
-            month = prev.strftime("%Y-%m")
-        summary = self.merchant_data.monthly_summary(merchant["merchant_id"], month=month)
-        masked = self._mask_email(merchant.get("email", ""))
+        Arac sonuclari router_decision_json icinde saklanir (bkz. _run_agent_loop);
+        boylece yeniden baslatmadan sonra da model ne ogrendigini bilir.
+        """
+        transcript: List[Dict[str, Any]] = []
         try:
-            self.admin_store.enqueue_outbound_message(
-                user_id,
-                f"[Ekstre] {merchant.get('business_name')} — {summary.get('month')} dönemi: "
-                f"ciro {self._format_try_amount(summary.get('gross_try', 0))}, "
-                f"komisyon {self._format_try_amount(summary.get('commission_try', 0))}.",
-                sender="ai-statement",
-            )
+            session_id = self.admin_store.get_latest_session_id_for_user(user_id, channel)
+            if not session_id:
+                return transcript
+            conversation = self.admin_store.get_conversation(session_id)
         except Exception as error:
-            print(f"Statement outbox warning: {error}")
-        response_builder.add_fact(
-            f"{summary.get('month')} dönemi ekstresi kayıtlı e-posta adresine gönderildi: {masked}."
-        )
-        response_builder.add_fact(
-            f"Dönem özeti: ciro {self._format_try_amount(summary.get('gross_try', 0))}, "
-            f"komisyon {self._format_try_amount(summary.get('commission_try', 0))}."
-        )
+            print(f"Transcript hydration warning: {error}")
+            return transcript
 
-    def _handle_payment_link(self, response_builder: ResponseBuilder,
-                             merchant: Dict[str, Any], tool_args: Dict[str, Any],
-                             user_profile: Dict[str, Any], user_id: str) -> None:
-        link = self.merchant_data.create_payment_link(
-            merchant["merchant_id"],
-            amount_try=tool_args.get("amount_try"),
-            description=tool_args.get("description"),
-        )
-        response_builder.set_payment_link(link)
-        amount_note = (
-            f" ({self._format_try_amount(link['amount_try'])} tutarında)"
-            if link.get("amount_try") else " (tutar serbest)"
-        )
-        # URL sesli okunmaz: linkin kendisi context'te durur (panel/transkript
-        # gosterir), konusmada yalnizca SMS ile gonderildigi soylenir.
-        response_builder.add_fact(
-            f"Ödeme linki oluşturuldu{amount_note} ve telefonuna SMS ile gönderildi. "
-            "Müşterileri bu linkten kartla ödeyebilir, tutarlar hakedişe dahil olur. "
-            "Linkin adresini SESLİ OKUMA; SMS'e geldiğini söyle."
-        )
-        payload = {"url": link["url"], "amount_try": link.get("amount_try"),
-                   "merchant_id": merchant.get("merchant_id")}
-        pending = user_profile.get("pending_offer") or {}
-        if pending.get("trigger") == "pos_out_of_service":
-            # POS arizasi sirasindaki linki kabul edilen upsell olarak say.
-            payload["trigger"] = "pos_out_of_service"
-            try:
-                self.admin_store.record_lead_event(user_id, "offer_accepted", payload)
-            except Exception as error:
-                print(f"Lead event warning: {error}")
-            user_profile["pending_offer"] = None
-            user_profile["offer_made"] = True
-        try:
-            self.admin_store.record_lead_event(user_id, "payment_link_created", payload)
-        except Exception as error:
-            print(f"Lead event warning: {error}")
-
-    def _handle_recommend_offer(self, response_builder: ResponseBuilder,
-                                merchant: Dict[str, Any], tool_args: Dict[str, Any],
-                                user_profile: Dict[str, Any], user_id: str) -> None:
-        trigger = tool_args.get("trigger") or (user_profile.get("pending_offer") or {}).get("trigger")
-        accepted = bool(tool_args.get("accepted"))
-
-        if accepted:
-            pending = user_profile.get("pending_offer") or {"trigger": trigger}
-            payload = dict(pending)
-            payload["merchant_id"] = merchant.get("merchant_id")
-            if pending.get("trigger") == "dormant_retention" or trigger == "dormant_retention":
-                series = [v.get("volume", 0) for v in merchant.get("monthly_volume_try", [])]
-                healthy = sorted(series, reverse=True)[:3]
-                recovered = round(sum(healthy) / len(healthy)) if healthy else 0
-                payload["recovered_volume_try"] = recovered
-                response_builder.add_fact(
-                    f"Teklif kabul edildi ve kaydedildi. Aylık yaklaşık {self._format_try_amount(recovered)} "
-                    "hacim geri kazanılıyor. Sıcak bir teşekkür et, planın bugün aktifleştirileceğini söyle."
-                )
-            else:
-                response_builder.add_fact(
-                    "Teklif kabul edildi ve kaydedildi. Teşekkür et; talebin temsilci onayıyla bugün "
-                    "aktifleştirileceğini söyle."
-                )
-            try:
-                self.admin_store.record_lead_event(user_id, "offer_accepted", payload)
-            except Exception as error:
-                print(f"Lead event warning: {error}")
-            user_profile["pending_offer"] = None
-            user_profile["offer_made"] = True
-            return
-
-        if user_profile.get("offer_made"):
-            response_builder.add_fact(
-                "Bu görüşmede zaten bir teklif sunuldu. İkinci teklif YAPMA; mevcut konuya devam et."
-            )
-            return
-
-        if trigger == "volume_growth":
-            upgrade = self.merchant_data.get_upgrade_candidate(merchant)
-            if upgrade:
-                plan_new = upgrade["plan"]
-                response_builder.set_offer({
-                    "trigger": trigger, "plan": plan_new,
-                    "monthly_saving_try": upgrade["monthly_saving_try"],
+        for index, turn in enumerate(conversation.get("turns", [])[-max_turns:]):
+            transcript.append({"role": "user", "content": turn.get("user_input", "")})
+            decision = turn.get("router_decision") or {}
+            for order, call in enumerate(decision.get("tools") or []):
+                if not isinstance(call, dict) or not call.get("name"):
+                    continue
+                call_id = f"h{index}_{order}"
+                transcript.append({
+                    "role": "assistant", "content": "",
+                    "tool_calls": [{"id": call_id, "type": "function",
+                                    "function": {"name": call["name"],
+                                                 "arguments": call.get("args") or {}}}],
                 })
-                response_builder.add_fact(
-                    f"TEKLİF: {plan_new.get('name')} planı — komisyon %{plan_new.get('rate_pct')}, "
-                    f"ayda yaklaşık {self._format_try_amount(upgrade['monthly_saving_try'])} tasarruf. "
-                    "Tek cümleyle, yardımcı olma tonunda sun ve ister misiniz diye sor."
-                )
-                user_profile["pending_offer"] = {
-                    "trigger": trigger,
-                    "plan_id": plan_new.get("plan_id"),
-                    "monthly_saving_try": upgrade["monthly_saving_try"],
-                }
-            else:
-                response_builder.add_fact("Uygun bir üst plan bulunamadı; teklif sunma.")
-        elif trigger == "social_selling":
-            missing = [p for p in ("sanal_pos", "odeme_linki") if p not in merchant.get("products", [])]
-            label_map = {"sanal_pos": "Sanal POS", "odeme_linki": "Ödeme Linki"}
-            products = ", ".join(label_map[p] for p in missing) or "Sanal POS"
-            response_builder.set_offer({"trigger": trigger, "products": missing})
-            response_builder.add_fact(
-                f"TEKLİF: Instagram/internetten satış için {products} tam çözüm — havale kovalamak yerine "
-                "link gönderir ya da siteye entegre eder, kartla tahsil eder. Başvuru kaydı açmayı öner."
-            )
-            user_profile["pending_offer"] = {"trigger": trigger, "products": missing}
-        elif trigger == "dormant_retention":
-            retention = self.merchant_data.get_retention_plan()
-            trend = merchant.get("volume_trend") or {}
-            if retention:
-                response_builder.set_offer({"trigger": trigger, "plan": retention})
-                response_builder.add_fact(
-                    f"Hacim son dönemde ciddi düşmüş (%{abs(trend.get('change_pct', 0))} azalma). "
-                    f"TEKLİF: {retention.get('name')} — 3 ay boyunca %{retention.get('rate_pct')} komisyon, "
-                    "sabit ücret yok. Empatiyle, geri kazanmak istediğinizi belirterek sun."
-                )
-                user_profile["pending_offer"] = {
-                    "trigger": trigger, "plan_id": retention.get("plan_id"),
-                }
-        elif trigger == "pos_out_of_service":
-            response_builder.add_fact(
-                "TEKLİF: Cihaz çalışana kadar ödeme linkiyle tahsilata devam edebilir — "
-                "isterse hemen link oluşturulacak."
-            )
-            user_profile["pending_offer"] = {"trigger": trigger}
-        else:
-            response_builder.add_fact("Belirgin bir fırsat yok; teklif sunma.")
+                transcript.append({
+                    "role": "tool", "tool_call_id": call_id, "name": call["name"],
+                    "content": call.get("result") or "",
+                })
+            if turn.get("agent_response"):
+                transcript.append({"role": "assistant",
+                                   "content": turn["agent_response"]})
+        return transcript
 
-    def _handle_answer_general(self, response_builder: ResponseBuilder,
-                               merchant: Dict[str, Any], tool_args: Dict[str, Any],
-                               user_profile: Dict[str, Any]) -> None:
-        category = tool_args.get("category")
-        details = self.config.get_project_details()
-        if category == "security_smalltalk":
-            response_builder.add_fact(
-                "GÜVENLİK UYARISI: Müşteri kart numarası paylaşmaya başladı ya da kart verisi konuşuluyor. "
-                "Nazikçe ama NET biçimde kes: tam kart numarası asla telefonda paylaşılmamalı; "
-                "gerekirse sadece son 4 hane yeterli."
+    def _run_agent_loop(self, *, user_input: str, user_profile: Dict[str, Any],
+                        current_history: List[Dict[str, Any]],
+                        merchant: Dict[str, Any] | None,
+                        ctx: ToolContext, on_tool=None) -> Dict[str, Any]:
+        """Faz A: model araclari kendi secer, sonuclari gorur, gerekirse zincirler.
+
+        Donen sozluk panel/DB sozlesmesini korur: 'tool' + 'args' alanlari eskisi
+        gibi ilk araci gosterir, 'tools' listesi tum zinciri tasir.
+        """
+        system_prompt = build_planner_system_prompt()
+
+        merchant_line = self._build_merchant_router_line(merchant, ctx.user_id)
+        if merchant_line:
+            system_prompt += f"\n\n{merchant_line}"
+        card_block = self._build_customer_card_prompt(user_profile)
+        if card_block:
+            system_prompt += f"\n\n{card_block}"
+
+        transcript = self._get_planner_transcript(ctx.user_id, ctx.channel)
+        user_message = {"role": "user", "content": user_input}
+
+        plan = self.planner.run(
+            system_prompt=system_prompt,
+            messages=trim_transcript(transcript + [user_message]),
+            ctx=ctx,
+            on_tool=on_tool,
+        )
+
+        # Bu turu transkripte isle: kullanici mesaji + arac cagrilari + sonuclar.
+        # Asistanin NIHAI cevabi sonra eklenir (bkz. record_agent_reply) cunku
+        # cevabi ikinci model (kompozisyon fazi) yazar — planlayicinin kendi
+        # duz yazisi atilir ve transkripte girmemelidir.
+        transcript.append(user_message)
+        transcript.extend(plan.messages)
+
+        if plan.stop_reason == "llm_error":
+            print(f"Agent loop LLM error: {plan.llm_error}")
+            if not plan.executed:
+                # Saglayici hatasini parse hatasindan AYIR: onceki surumde ikisi
+                # de sessizce answer_general'a dusuyordu ve sebep gorunmuyordu.
+                ctx.builder.add_fact(
+                    "Araç katmanına ulaşılamadı. Veri uydurma; kısaca özür dile ve "
+                    "bilgiyi tekrar sormasını iste.")
+        elif not plan.executed:
+            self.run_tool("answer_general", {"category": "other"}, ctx)
+
+        # Engellenen araclar cevap modeline ACIKCA bildirilir. Genel bir
+        # "islem yapilmadi" uyarisi yetmiyordu: model neden olmadigini
+        # bilmeyince "ekstrenizi tekrar iletiyorum" gibi yapilmamis bir eylem
+        # anlatiyordu. Dogru cevap "zaten gonderilmisti" olmali.
+        for item in plan.executed:
+            if not item.suppressed:
+                continue
+            label = panel_tool_labels().get(item.name, item.name)
+            ctx.builder.add_fact(
+                f"TEKRAR ENGELLENDI ({label}): bu işlem bu görüşmede ZATEN "
+                "yapılmıştı, ŞİMDİ TEKRAR YAPILMADI. Müşteriye yeniden "
+                "yaptığını söyleme; daha önce yapıldığını hatırlat."
             )
-            user_profile["conversation_focus"] = "security"
-        elif category == "company_info":
-            response_builder.add_fact(f"Şirket bilgisi: {details.get('description', '')}")
-            products = details.get("products", [])
-            if products:
-                response_builder.add_fact(
-                    "Ürünler: " + "; ".join(f"{p['label']} — {p['description']}" for p in products)
-                )
-            user_profile["conversation_focus"] = "company_info"
-        elif category == "how_it_works":
-            response_builder.add_fact(
-                "Çalışma bilgisi: gün içi işlemler akşam 23:00'te gruplanır, komisyon düşülür, "
-                "ertesi iş günü saat 10:00'da IBAN'a yatar (T+1)."
+
+        # UYDURMA KORUMASI: hafiza guncellemesi disinda hicbir arac calismadiysa
+        # bu turda FIILEN BIR SEY YAPILMADI. Cevap modeline bunu acikca soyle;
+        # aksi halde "linki olusturdum, SMS gonderdim" gibi GERCEKLESMEMIS bir
+        # eylem iddia edebiliyor (canli provada goruldu).
+        did_something = any(
+            item.name not in ("update_customer_card", "answer_general")
+            and not item.suppressed and not item.error
+            for item in plan.executed
+        )
+        if not did_something:
+            ctx.builder.add_fact(
+                "BU TURDA HİÇBİR İŞLEM YAPILMADI ve yeni veri alınmadı. "
+                "Link oluşturdum / ekstre gönderdim / kayıt açtım gibi YAPILMAMIŞ "
+                "bir eylemi ASLA söyleme. Ya eksik bilgiyi sor ya da yalnızca "
+                "elindeki bilgiyle konuş."
             )
-            user_profile["conversation_focus"] = "how_it_works"
-        elif category == "working_hours":
-            response_builder.add_fact(
-                f"Destek hattı {details.get('working_hours', '7/24')} açık; Ada her zaman yanıtlıyor."
+
+        return {
+            "tool": plan.executed[0].name if plan.executed else "answer_general",
+            "args": plan.executed[0].args if plan.executed else {},
+            "tools": [
+                {"name": item.name, "args": item.args, "result": item.result,
+                 "suppressed": item.suppressed, "error": item.error}
+                for item in plan.executed
+            ],
+            "iterations": plan.iterations,
+            "stop_reason": plan.stop_reason,
+            "usage": plan.usage,
+        }
+
+    # ------------------------------------------------------- tool execution
+
+    def _build_tool_context(self, response_builder: ResponseBuilder,
+                            merchant: Dict[str, Any] | None, user_id: str,
+                            channel: str, user_profile: Dict[str, Any]) -> ToolContext:
+        return ToolContext(
+            repo=self.merchant_data,
+            store=self.admin_store,
+            builder=response_builder,
+            merchant=merchant,
+            user_id=user_id,
+            channel=channel,
+            user_profile=user_profile,
+            config=self.config,
+        )
+
+    def run_tool(self, tool_name: str, tool_args: Dict[str, Any],
+                 ctx: ToolContext) -> str:
+        """Tek arac calistirir ve MODELE donecek kisa ozeti dondurur.
+
+        Hem tek atimlik yol hem de cok adimli agent loop burayi kullanir.
+        Handler patlarsa cagri olmez: hata metni ozet olarak doner, boylece
+        loop'ta model durumu gorup baska bir yol deneyebilir.
+        """
+        spec = tools.get(tool_name)
+        if spec is None:
+            available = ", ".join(tools.tool_names())
+            ctx.builder.add_fact(
+                "İstenen araç bulunamadı; genel bilgiyle yardımcı ol, veri uydurma.")
+            return f"HATA: '{tool_name}' diye bir arac yok. Mevcut araclar: {available}"
+
+        if spec.requires_merchant and ctx.merchant is None:
+            ctx.builder.add_fact(
+                "İşletme kaydı bulunamadı; genel bilgiyle yardımcı ol, gerekirse "
+                "temsilciye devret.")
+            return "HATA: Hatta bir isletme eslesmedi; bu arac calistirilamaz."
+
+        args = tools.coerce_args(spec, tool_args)
+        # Modelin yapisal argumanlari hafizaya yansisin: boylece basit turlarda
+        # ayrica update_customer_card cagirmaya gerek kalmaz.
+        tools.mirror_args_to_card(ctx, tool_name, args)
+        try:
+            return spec.fn(ctx, args) or "Islem tamamlandi."
+        except Exception as error:
+            print(f"Tool dispatch error ({tool_name}): {error}")
+            ctx.builder.add_fact(
+                "Sistemde kısa süreli bir aksaklık oldu ve sorgu tamamlanamadı. Özür dile, "
+                "bilgiyi TEKRAR sormasını iste (tutar/tarih), asla veri uydurma."
             )
-        elif category == "thanks":
-            response_builder.add_fact("Görüşme kapanışı: kısa ve sıcak bir kapanış yap, yeni bir konu açma.")
-            user_profile["conversation_focus"] = "closing"
-        else:
-            response_builder.add_fact("Genel sohbet ya da selamlama.")
-            if category == "greeting":
-                user_profile["conversation_focus"] = "greeting"
+            return (f"HATA: '{tool_name}' calistirilamadi ({type(error).__name__}). "
+                    "Veri uydurma; baska bir arac dene ya da eksik bilgiyi musteriye sor.")
+
+    # ------------------------------------------------------- tool handlers
 
     # ------------------------------------------------------------ main turn
 
-    def process_turn(self, user_input: str, user_id: str = "default_user", channel: str = "default") -> Dict[str, Any]:
+    def process_turn(self, user_input: str, user_id: str = "default_user",
+                     channel: str = "default", on_delta=None,
+                     on_tool=None) -> Dict[str, Any]:
+        """Bir konusma turu.
+
+        Kullanici basina kilitlidir: ayni kisiden gelen es zamanli iki mesaj
+        birbirinin profilini/transkriptini bozmaz. Farkli kullanicilar paralel
+        ilerler.
         """
-        LLM Tool Calling Pipeline: Input -> Router -> Tool -> Response
+        self._touch_user(user_id)
+        with self._lock_for_user(user_id):
+            return self._process_turn_locked(user_input, user_id, channel,
+                                             on_delta, on_tool)
+
+    def process_turn_stream(self, user_input: str, user_id: str = "default_user",
+                            channel: str = "default"):
+        """process_turn'un AKAN surumu.
+
+        Sirasiyla ("tool", arac_adi), ("delta", metin) ve en sonda
+        ("done", tam_sonuc) verir. Arac olaylari, planlama fazi uzun
+        surdugunde kullanicinin sessizce beklememesi icindir.
+        Tur, arka planda normal akisindan gecer (arac planlama, loglama,
+        transkript) — degisen tek sey cevabin parca parca yayinlanmasi.
+
+        Neden thread: tur mantigi lineer bir fonksiyon; onu generator'a
+        cevirmek tum akisi bolmeyi gerektirirdi. Kuyruk ile besleme, mantigi
+        TEK yerde tutar (akan ve akmayan yol ayni koddan gecer).
         """
+        import queue
+
+        channel_queue: "queue.Queue" = queue.Queue()
+        outcome: Dict[str, Any] = {}
+
+        def worker():
+            try:
+                outcome["result"] = self.process_turn(
+                    user_input, user_id=user_id, channel=channel,
+                    on_delta=lambda text: channel_queue.put(("delta", text)),
+                    on_tool=lambda name: channel_queue.put(("tool", name)))
+            except Exception as error:      # pragma: no cover
+                outcome["error"] = error
+            finally:
+                channel_queue.put(None)
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        while True:
+            item = channel_queue.get()
+            if item is None:
+                break
+            yield item
+
+        thread.join()
+        if "error" in outcome:
+            raise outcome["error"]
+        yield ("done", outcome.get("result") or {})
+
+    def _process_turn_locked(self, user_input: str, user_id: str, channel: str,
+                             on_delta=None, on_tool=None) -> Dict[str, Any]:
         user_input = user_input.strip()
         response_builder = ResponseBuilder()
         if not user_input:
@@ -1104,10 +1285,10 @@ class AgentOrchestrator:
             }
 
         current_history = self._get_conversation_history(user_id, channel)
-        self.history = current_history
         is_first_turn = len(current_history) == 0
         user_profile = self._get_user_profile(user_id)
         session_id = self._get_session_id(user_id, channel)
+        self._apply_restored_state(user_profile, session_id)
 
         # Bilinen musteri bilgisi: WhatsApp'ta user_id zaten telefondur (kanal gercegi).
         user_profile["channel"] = channel
@@ -1116,72 +1297,39 @@ class AgentOrchestrator:
 
         # Hattaki isletme: cagri baglami > telefon eslesmesi > demo varsayilani.
         merchant = self._resolve_merchant(user_id, user_profile)
-        merchant_block = self._build_merchant_profile_block(merchant, user_id)
+        merchant_block = self._build_merchant_profile_block(
+            merchant, user_id, user_profile.get('identity_verified', True))
 
-        current_intents = self.intent_parser.parse(user_input)
-        current_slots = self.slot_mapper.extract(user_input)
-        self._update_user_profile_from_text(user_profile, user_input)
-        user_profile["slots"].update(current_slots)
-        user_profile["intents"] = current_intents
+        # 2. PLANLAMA + ARAC YURUTME
+        tool_context = self._build_tool_context(
+            response_builder, merchant, user_id, channel, user_profile)
 
-        tool_name, tool_args, router_decision = self._run_router_step(
-            user_input=user_input,
-            user_profile=user_profile,
-            current_history=current_history,
-            current_slots=current_slots,
-            merchant_block=self._build_merchant_router_line(merchant, user_id),
-        )
-
-        # AGENTIC HAFIZA: musteri kartini router LLM'in ayni cagrida urettigi
-        # "card" alanindan birlestir (ekstra cagri yok, kelime bazli cikarim yok).
-        self._merge_router_card(user_profile, router_decision)
+        if AGENT_LOOP_ENABLED:
+            router_decision = self._run_agent_loop(
+                user_input=user_input,
+                user_profile=user_profile,
+                current_history=current_history,
+                merchant=merchant,
+                ctx=tool_context,
+                on_tool=on_tool,
+            )
+        else:
+            # GERI DONUS YOLU (AGENT_ENABLED=0): tek atimlik router.
+            tool_name, tool_args, router_decision = self._run_router_step(
+                user_input=user_input,
+                user_profile=user_profile,
+                current_history=current_history,
+                merchant_block=self._build_merchant_router_line(merchant, user_id),
+            )
+            self._merge_router_card(user_profile, router_decision)
+            self.run_tool(tool_name, tool_args, tool_context)
 
         # Log User Turn
         current_history.append({
             "role": "user",
             "text": user_input,
             "router_decision": router_decision,
-            "intents": current_intents,
-            "slots": current_slots
         })
-
-        # 2. TOOL EXECUTION STEP — herhangi bir handler hatasi cagriyi OLDURMEZ:
-        # hata loglanir, cevap LLM'i "tekrar deneyelim" tonunda devam eder.
-        try:
-            if merchant is None:
-                response_builder.add_fact("İşletme kaydı bulunamadı; genel bilgiyle yardımcı ol, gerekirse temsilciye devret.")
-            elif tool_name == "get_settlement_status":
-                self._handle_settlement(response_builder, merchant, tool_args)
-            elif tool_name == "find_transaction":
-                self._handle_find_transaction(response_builder, merchant, tool_args)
-            elif tool_name == "troubleshoot_pos":
-                self._handle_troubleshoot(response_builder, merchant, tool_args, user_profile, user_id)
-            elif tool_name == "explain_fees":
-                self._handle_explain_fees(response_builder, merchant, tool_args, user_profile)
-            elif tool_name == "send_statement":
-                self._handle_send_statement(response_builder, merchant, tool_args, user_id)
-            elif tool_name == "create_payment_link":
-                self._handle_payment_link(response_builder, merchant, tool_args, user_profile, user_id)
-            elif tool_name == "recommend_offer":
-                self._handle_recommend_offer(response_builder, merchant, tool_args, user_profile, user_id)
-            elif tool_name == "trigger_handoff":
-                response_builder.trigger_handoff(
-                    reason=tool_args.get("reason", "Müşteri talebi"),
-                    missing_info=tool_args.get("missing_info", []),
-                    share_contact_details=bool(tool_args.get("share_contact_details")),
-                )
-                response_builder.add_fact(
-                    "İnsan temsilciye devir tetiklendi. Müşteriyi doğrula (haklısınız de), özetin "
-                    "temsilciye iletildiğini ve hemen bağlanacağını söyle."
-                )
-            else:  # answer_general ve bilinmeyen araclar
-                self._handle_answer_general(response_builder, merchant, tool_args, user_profile)
-        except Exception as error:
-            print(f"Tool dispatch error ({tool_name}): {error}")
-            response_builder.add_fact(
-                "Sistemde kısa süreli bir aksaklık oldu ve sorgu tamamlanamadı. Özür dile, "
-                "bilgiyi TEKRAR sormasını iste (tutar/tarih), asla veri uydurma."
-            )
 
         # 3. RESPONSE GENERATION STEP
         context_json = response_builder.to_json()
@@ -1192,8 +1340,6 @@ class AgentOrchestrator:
         system_prompt += f"\n\nCONTEXT FROM TOOLS:\n{context_json}"
         system_prompt += (
             f"\n\nCONVERSATION MEMORY:\n"
-            f"Last detected intents: {current_intents}\n"
-            f"Known slots: {user_profile['slots']}\n"
             f"Conversation focus: {user_profile.get('conversation_focus')}\n"
             f"Offer already made this call: {user_profile.get('offer_made')}\n"
             f"Recent turn count: {len(current_history)}"
@@ -1204,31 +1350,40 @@ class AgentOrchestrator:
         system_prompt += f"\n\nSALES PROFILE:\n{self._build_sales_profile_prompt_summary()}"
         system_prompt += f"\nConversation stage: first_turn={is_first_turn}"
 
-        # Final Generation — sablon dal yok, tum cevaplar LLM'den uretilir (tam agentic).
-        final_response = self.llm_client.generate(
-            system_prompt=system_prompt,
-            user_prompt=self._build_response_user_prompt(user_input, user_profile, current_history)
-        )
-        if is_llm_error(final_response):
-            # LLM'e ulasilamiyorsa uretilecek model yok; tek satirlik ariza mesaji zorunlu.
-            print(f"LLM generation error: {final_response}")
-            final_response = (
-                "Şu anda teknik bir sorun yaşıyorum, kısa süre sonra tekrar deneyebilir misiniz? "
-                "Dilerseniz sizi müşteri temsilcimize de bağlayabilirim."
-            )
+        resume_block = self._build_resume_prompt_block(user_profile, channel, is_first_turn)
+        if resume_block:
+            system_prompt += f"\n\n{resume_block}"
 
-        final_response = self._remove_redundant_greeting(final_response, is_first_turn)
-        final_response = self._normalize_currency_language(final_response)
-        if channel == "voice":
-            final_response = self._make_speech_friendly(final_response)
-        final_response = self._prepend_resume_summary(final_response, user_profile, channel, is_first_turn)
+        response_user_prompt = self._build_response_user_prompt(
+            user_input, user_profile, current_history)
+
+        # Final Generation — sablon dal yok, tum cevaplar LLM'den uretilir.
+        if on_delta is not None:
+            final_response = self._compose_streaming(
+                system_prompt, response_user_prompt, on_delta,
+                channel=channel, is_first_turn=is_first_turn)
+        else:
+            raw_response = self.llm_client.generate(
+                system_prompt=system_prompt, user_prompt=response_user_prompt)
+            if is_llm_error(raw_response):
+                # LLM'e ulasilamiyorsa uretilecek model yok; ariza mesaji zorunlu.
+                print(f"LLM generation error: {raw_response}")
+                raw_response = self.TECHNICAL_FAULT_REPLY
+            final_response = self._polish(raw_response, channel=channel,
+                                          is_first_turn=is_first_turn)
 
         current_history.append({"role": "agent", "text": final_response})
-        self.history = current_history
+
+        # Planlayici transkriptine MUSTERININ DUYDUGU cevabi yaz. Planlama
+        # fazinin kendi duz yazisi degil: onu kompozisyon modeli yaziyor ve
+        # planlayicininki atiliyor. Yanlis olani yazarsak model bir sonraki
+        # turda soylemedigi bir seyi soyledigini sanir.
+        if AGENT_LOOP_ENABLED:
+            self._get_planner_transcript(user_id, channel).append(
+                {"role": "assistant", "content": final_response})
+
         ai_notes = self._build_ai_notes_payload(
             user_profile=user_profile,
-            current_intents=current_intents,
-            current_slots=current_slots,
             router_decision=router_decision,
             context=response_builder.build(),
             user_input=user_input,
@@ -1252,6 +1407,14 @@ class AgentOrchestrator:
         except Exception as error:
             print(f"AdminStore log warning: {error}")
 
+        # Konusma -> CRM kapali dongusu: anlamli tur ise isletme-360'a otomatik
+        # temas kaydi dus (oturum basina tek kayit, upsert).
+        try:
+            self._log_crm_contact(merchant, session_id, channel, user_profile,
+                                  ai_notes, ai_summary, router_decision)
+        except Exception as error:                          # pragma: no cover
+            print(f"CRM contact log warning: {error}")
+
         return {
             "user_input": user_input,
             "agent_response": final_response,
@@ -1269,6 +1432,12 @@ class AgentOrchestrator:
         uretilen metin gecmise ilk agent turu olarak yazilir, sonraki turlar
         normal process_turn akisindan gecer.
         """
+        self._touch_user(user_id)
+        with self._lock_for_user(user_id):
+            return self._start_call_locked(user_id, channel, mode, merchant_id, goal)
+
+    def _start_call_locked(self, user_id: str, channel: str, mode: str,
+                           merchant_id: str | None, goal: str | None) -> Dict[str, Any]:
         if merchant_id:
             self.set_call_context(user_id, merchant_id, mode, goal)
         user_profile = self._get_user_profile(user_id)
@@ -1286,7 +1455,8 @@ class AgentOrchestrator:
                     "trigger": "dormant_retention",
                     "plan_id": retention.get("plan_id"),
                 }
-            merchant_block = self._build_merchant_profile_block(merchant, user_id)
+            merchant_block = self._build_merchant_profile_block(
+            merchant, user_id, user_profile.get('identity_verified', True))
             system_prompt = self.prompt_builder.build_system_prompt()
             system_prompt += f"\n\n{merchant_block}"
             if retention:

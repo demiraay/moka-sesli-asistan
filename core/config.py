@@ -1,10 +1,18 @@
 import os
-import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from dotenv import load_dotenv
 
+
 class Config:
+    """Ortam ayarlari + is verisine erisim.
+
+    Eskiden data/*.json dosyalarini bellege yukluyordu. Artik tum is verisi
+    SQLite'ta (data/moka.sqlite3); asagidaki veri ozellikleri repository'ye
+    delege eden TEMBEL uyumluluk katmanidir. Yeni kod dogrudan
+    MerchantRepository kullanmali.
+    """
+
     _instance = None
 
     def __new__(cls):
@@ -21,24 +29,19 @@ class Config:
 
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.data_dir = os.path.join(self.base_dir, 'data')
+        self.business_db_path = os.path.join(self.data_dir, 'moka.sqlite3')
 
-        # Data stores (mock Moka backend)
-        self.projects: list = []
-        self.merchants: list = []
-        self.transactions: list = []
-        self.settlements: list = []
-        self.pos_devices: list = []
-        self.commission_plans: list = []
-        self.support_kb: list = []
-        self.rules: dict = {}
-        self.handoff_rules: dict = {}
+        self._repository = None
 
         # LLM Settings
         # Mode: 0 = Ollama (Local), 1 = OpenAI (Cloud), 2 = Groq (Cloud, free tier)
         self.llm_mode = int(os.getenv('LLM_MODE', '0'))
         self.openai_api_key = os.getenv('OPENAI_API_KEY', '')
         self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
-        self.ollama_model = os.getenv('OLLAMA_MODEL', 'gpt-oss:120b-cloud')
+        # Varsayilan, bu kurulumda YUKLU olan modeldir. .env silinse/tasinsa
+        # bile "model not found" yerine calisir hale gelir. Baska model icin
+        # .env'de OLLAMA_MODEL degistirin.
+        self.ollama_model = os.getenv('OLLAMA_MODEL', 'gemma4:31b-cloud')
         self.openai_model = os.getenv('OPENAI_MODEL', 'gpt-4o')
         self.groq_api_key = os.getenv('GROQ_API_KEY', '')
         # Demo gunu sigortasi: birincil anahtar kota/ariza yerse otomatik gecis.
@@ -48,7 +51,7 @@ class Config:
         # (llama yabanci kelime karistiriyordu: "realizado", "erfolgreich").
         self.groq_model = os.getenv('GROQ_MODEL', 'openai/gpt-oss-120b')
         # Router ayri modelde kosar: hem hizli hem de Groq free tier'da her model
-        # AYRI dakikalik token kovasina sahip — cevap LLM'inin (70B) kotasini yemez.
+        # AYRI dakikalik token kovasina sahip — cevap LLM'inin kotasini yemez.
         self.groq_router_model = os.getenv('GROQ_ROUTER_MODEL', 'openai/gpt-oss-20b')
 
         # Voice I/O settings
@@ -70,8 +73,66 @@ class Config:
         self.elevenlabs_output_format = os.getenv('ELEVENLABS_OUTPUT_FORMAT', 'mp3_22050_32')
         self.elevenlabs_base_url = os.getenv('ELEVENLABS_BASE_URL', 'https://api.elevenlabs.io/v1')
 
-        self.load_data()
         self._initialized = True
+
+    # ------------------------------------------------------------ repository
+
+    @property
+    def repository(self):
+        """Is verisi repository'si (tembel kurulur).
+
+        Import zamaninda kurulmaz: DB yoksa uygulamanin tamami degil, yalnizca
+        veriye dokunan yol hata verir ve mesaj seed komutunu soyler.
+        """
+        if self._repository is None:
+            from core.repository import MerchantRepository
+            self._repository = MerchantRepository(self.business_db_path)
+        return self._repository
+
+    def reload_data(self) -> None:
+        """Repository'yi bosaltir; bir sonraki erisimde yeniden acilir."""
+        self._repository = None
+
+    # ------------------------------------------- veri ozellikleri (uyumluluk)
+
+    @property
+    def merchants(self) -> List[Dict[str, Any]]:
+        return self.repository.list_merchants()
+
+    @property
+    def transactions(self) -> List[Dict[str, Any]]:
+        return self.repository.find_transactions_all()
+
+    @property
+    def settlements(self) -> List[Dict[str, Any]]:
+        return self.repository.list_all_settlements()
+
+    @property
+    def pos_devices(self) -> List[Dict[str, Any]]:
+        return self.repository.list_all_devices()
+
+    @property
+    def commission_plans(self) -> List[Dict[str, Any]]:
+        return self.repository.list_plans()
+
+    @property
+    def support_kb(self) -> List[Dict[str, Any]]:
+        return self.repository.list_kb_articles()
+
+    @property
+    def projects(self) -> List[Dict[str, Any]]:
+        project = self.repository.get_config("project", {})
+        return [project] if project else []
+
+    @property
+    def rules(self) -> Dict[str, Any]:
+        return self.repository.get_config("rules", {}) or {}
+
+    @property
+    def handoff_rules(self) -> Dict[str, Any]:
+        return self.repository.get_config("handoff_rules", {}) or {}
+
+    # ---------------------------------------------------------------- getters
 
     def get_llm_profile(self, profile: str = "default") -> Dict[str, Any]:
         """Returns LLM settings for a task profile.
@@ -94,49 +155,21 @@ class Config:
             "groq_model": groq_model,
         }
 
-    def load_data(self):
-        """Loads all JSON data (mock Moka backend) from the data directory."""
-        self.projects = self._load_json_file('projects.json', [])
-        self.merchants = self._load_json_file('merchants.json', [])
-        self.transactions = self._load_json_file('transactions.json', [])
-        self.settlements = self._load_json_file('settlements.json', [])
-        self.pos_devices = self._load_json_file('pos_devices.json', [])
-        self.commission_plans = self._load_json_file('commission_plans.json', [])
-        self.support_kb = self._load_json_file('support_kb.json', [])
-        self.rules = self._load_json_file('rules.json', {})
-        self.handoff_rules = self._load_json_file('handoff_rules.json', {})
-        # Ham JSON yeniden yuklendi: D-1/D+1 tarih token'lari tekrar cozulmeli
-        # (MerchantDataManager bir sonraki kurulumda yeniden cevirir).
-        self._date_tokens_resolved = False
-
-    def _load_json_file(self, filename: str, default: Any) -> Any:
-        file_path = os.path.join(self.data_dir, filename)
-        if not os.path.exists(file_path):
-            print(f"Warning: Data file {filename} not found.")
-            return default
-
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error loading {filename}: {e}")
-            return default
-
     def get_project_name(self) -> str:
-        if self.projects:
-            return self.projects[0].get('name', 'Moka Sesli Asistan')
-        return 'Moka Sesli Asistan'
+        return self._project().get('name', 'Moka Sesli Asistan')
 
     def get_assistant_name(self) -> str:
-        if self.projects:
-            return self.projects[0].get('assistant_name', 'Ada')
-        return 'Ada'
+        return self._project().get('assistant_name', 'Ada')
 
     def get_project_details(self) -> dict:
         """Returns company/assistant details (branding, products, support line)."""
-        if self.projects:
-            return self.projects[0]
-        return {}
+        return self._project()
+
+    def _project(self) -> Dict[str, Any]:
+        try:
+            return self.repository.get_config("project", {}) or {}
+        except Exception:
+            return {}
 
     def get_support_rules(self) -> dict:
         return self.rules.get('support_rules', {})

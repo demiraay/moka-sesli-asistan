@@ -147,6 +147,8 @@
     window.CALL_CONFIG = {
       mode: {{ mode | tojson }},
       merchantId: {{ merchant_id | tojson }},
+      // Arac adi -> Turkce etiket (kaynak: core/tools registry).
+      toolLabels: {{ tool_labels | tojson }},
     };
   </script>
   <script src="{{ url_for('static', filename='call.js') }}?v={{ css_version }}"></script>

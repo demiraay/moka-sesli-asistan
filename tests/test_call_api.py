@@ -7,21 +7,37 @@ import pytest
 
 from core import voice as voice_module
 from core.admin_store import AdminStore
-from core.orchestrator import AgentOrchestrator
+from core.llm import LLMResponse, ToolCall
+from core.orchestrator import AGENT_LOOP_ENABLED, AgentOrchestrator
 
 
 class FakeLLM:
+    """Planlama fazında tool_call döndürür, cevap fazında düz metin."""
+
     def __init__(self):
         self.router_queue = []
 
     def push(self, tool, args=None, card=None):
-        self.router_queue.append(json.dumps({"tool": tool, "args": args or {}, "card": card or {}}))
+        batch = [(tool, args or {})]
+        if card:
+            batch.append(("update_customer_card", card))
+        self.router_queue.append(batch)
+
+    def chat(self, messages, *, tools=None, tool_choice="auto", json_mode=False,
+             profile="default", timeout=25, max_tokens=None):
+        if not tools or not self.router_queue:
+            return LLMResponse(content="ok cevap", tool_calls=[], finish_reason="stop")
+        batch = self.router_queue.pop(0)
+        return LLMResponse(
+            content=None, finish_reason="tool_calls",
+            tool_calls=[ToolCall(id=f"c{index}", name=name, arguments=args)
+                        for index, (name, args) in enumerate(batch)])
 
     def generate(self, system_prompt, user_prompt, json_mode=False, profile="default"):
         if json_mode:
-            return self.router_queue.pop(0) if self.router_queue else json.dumps(
-                {"tool": "answer_general", "args": {}, "card": {}}
-            )
+            batch = self.router_queue.pop(0) if self.router_queue else [("answer_general", {})]
+            name, args = batch[0]
+            return json.dumps({"tool": name, "args": args, "card": {}})
         return "ok cevap"
 
 
@@ -179,3 +195,84 @@ def test_call_start_uses_selected_voice(client, monkeypatch):
     resp = http.post("/call/start", json={"mode": "inbound", "merchant_id": "M-1001", "voice_id": vid})
     assert resp.status_code == 200
     assert captured["voice_id"] == vid
+
+
+@pytest.mark.skipif(not AGENT_LOOP_ENABLED,
+                    reason="araç zinciri yalnızca agent loop'ta oluşur")
+def test_call_turn_exposes_full_tool_chain(client):
+    """Cok adimli loop'ta bir turda birden fazla arac calisir.
+
+    Cagri ekrani zincirin TAMAMINI gosterir; tek 'tool' alani yetmez.
+    """
+    http, orch = client
+    start = http.post("/call/start", json={"mode": "inbound", "merchant_id": "M-1001"}).get_json()
+    orch.llm_client.push("find_transaction", {"amount_try": 1250})
+    orch.llm_client.push("get_settlement_status", {"period": "latest"})
+
+    data = http.post("/call/turn", data={
+        "call_id": start["call_id"], "text": "Dun 1250 TL cektim, goremiyorum"}).get_json()
+
+    assert data["tools"] == ["find_transaction", "get_settlement_status"]
+    assert data["iterations"] == 2
+    assert data["stop_reason"] == "done"
+    assert data["tool"] == "find_transaction"      # geriye uyum: ilk arac
+
+
+def test_call_page_ships_tool_labels(client):
+    """Zincir rozetleri Turkce etiketle gosterilir; etiketler registry'den gelir."""
+    http, _ = client
+    html = http.get("/call").get_data(as_text=True)
+    assert "toolLabels" in html
+
+    # Jinja tojson Turkce karakterleri \u kacisiyla yazar; JSON'u ayristirip bak.
+    import re
+    raw = re.search(r"toolLabels:\s*(\{.*?\}),", html, re.S).group(1)
+    labels = json.loads(raw)
+    assert labels["get_settlement_status"] == "hakediş sorgulandı"
+    assert labels["trigger_handoff"] == "temsilciye devredildi"
+
+
+def _parse_sse(body):
+    """SSE govdesini (event, payload) ciftlerine ayirir."""
+    events = []
+    for block in body.strip().split("\n\n"):
+        name, data = None, None
+        for line in block.splitlines():
+            if line.startswith("event:"):
+                name = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                data = json.loads(line[len("data:"):].strip())
+        if name:
+            events.append((name, data))
+    return events
+
+
+@pytest.mark.skipif(not AGENT_LOOP_ENABLED, reason="akış agent loop yolunda")
+def test_call_turn_stream_delivers_text_progressively(client):
+    """Cevap tek blok yerine parça parça gelmeli."""
+    http, orch = client
+    start = http.post("/call/start", json={"mode": "inbound", "merchant_id": "M-1001"}).get_json()
+    orch.llm_client.push("get_settlement_status", {"period": "latest"})
+
+    response = http.post("/call/turn/stream",
+                         data={"call_id": start["call_id"], "text": "Param ne zaman yatacak?"})
+    assert response.status_code == 200
+    assert response.mimetype == "text/event-stream"
+
+    events = _parse_sse(response.get_data(as_text=True))
+    kinds = [name for name, _ in events]
+    assert "done" in kinds
+    assert kinds[-1] == "done", "done olayı en sonda gelmeli"
+
+    done = next(payload for name, payload in events if name == "done")
+    deltas = "".join(payload["text"] for name, payload in events if name == "delta")
+    # Akan metnin birleşimi nihai cevaba EŞİT olmalı — ekranda hiçbir şey
+    # sonradan değişmez.
+    assert deltas == done["reply_text"]
+    assert done["tools"] == ["get_settlement_status"]
+
+
+def test_call_turn_stream_requires_call_id_and_text(client):
+    http, _ = client
+    assert http.post("/call/turn/stream", data={"text": "merhaba"}).status_code == 400
+    assert http.post("/call/turn/stream", data={"call_id": "x"}).status_code == 400

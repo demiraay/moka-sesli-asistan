@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% set m = data.merchant %}
+{% set plan = data.plan or {} %}
+{% set risk = data.risk or {} %}
+{% set trend = data.volume_trend or {} %}
+
+{% block title %}{{ m.business_name }} — {{ panel_project }}{% endblock %}
+
+{% macro risk_class(tier) %}{{ 'hot' if tier in ['kritik', 'yüksek'] else ('warm' if tier == 'orta' else 'cold') }}{% endmacro %}
+
+{% block content %}
+  <div class="print-header">
+    <strong>{{ panel_project }} — {{ m.business_name }} müşteri raporu</strong>
+  </div>
+
+  <div class="page-header" style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div>
+      <a class="muted-line print-hide" href="{{ url_for('customers') }}" style="text-decoration:none;">← Müşteriler</a>
+      <h1 style="margin:4px 0;">{{ m.business_name }}
+        {% if m.status != 'active' %}<span class="temp-badge warm">{{ m.status }}</span>{% endif %}
+        <span class="temp-badge {{ risk_class(risk.risk_tier) }}">{{ risk.risk_tier }} risk · {{ risk.risk_score }}</span>
+      </h1>
+      <p>{{ m.owner_name }} · {{ m.sector }} · {{ m.city }}/{{ m.district }} · {{ m.merchant_id }}</p>
+    </div>
+    <div class="customer-filters print-hide" style="justify-content:flex-end;">
+      <a class="button secondary" href="{{ url_for('export_customer_csv', merchant_id=merchant_id) }}">CSV indir</a>
+      {% if pdf_available %}
+      <a class="button" href="{{ url_for('customer_pdf_report', merchant_id=merchant_id) }}">PDF indir</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- KPI ozet -->
+  <section class="stats-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+    <article class="stat-card highlight">
+      <span>Bu ay ciro</span>
+      <strong>{{ trend.last_month | tl }}</strong>
+      {% if trend.change_pct > 0 %}<em class="trend up">▲ %{{ trend.change_pct }}</em>
+      {% elif trend.change_pct < 0 %}<em class="trend down">▼ %{{ trend.change_pct | abs }}</em>
+      {% else %}<em class="trend flat">%0</em>{% endif %}
+    </article>
+    <article class="stat-card">
+      <span>Bu ay komisyon</span>
+      <strong>{{ data.monthly.commission_try | tl }}</strong>
+      <em class="trend flat">%{{ data.monthly.rate_pct }} · {{ plan.name }}</em>
+    </article>
+    <article class="stat-card">
+      <span>Risk / Segment</span>
+      <strong>{{ risk.risk_score }}</strong>
+      <em class="trend {{ 'down' if risk.segment in ['uyuyan', 'daralıyor'] else 'flat' }}">{{ risk.risk_tier }} · {{ risk.segment }}</em>
+    </article>
+    {% if data.upgrade %}
+    <article class="stat-card">
+      <span>Plan fırsatı</span>
+      <strong>{{ data.upgrade.monthly_saving_try | tl }}</strong>
+      <em class="trend up">{{ data.upgrade.plan.name }} ile aylık tasarruf</em>
+    </article>
+    {% else %}
+    <article class="stat-card">
+      <span>Son temas</span>
+      <strong style="font-size:1.2rem;">{{ (data.contacts[0].contacted_at if data.contacts else '—')[:10] }}</strong>
+      <em class="trend flat">{{ m.account_manager or 'atanmadı' }}</em>
+    </article>
+    {% endif %}
+  </section>
+
+  <section class="chart-grid" style="grid-template-columns: 2fr 1fr;">
+    <!-- Ciro trendi -->
+    <article class="chart-card">
+      <h2>Aylık ciro trendi (6 ay)</h2>
+      <div id="revenue-chart" class="chart-slot"></div>
+      {% if risk.reasons %}
+      <p class="chart-note"><strong>Risk notu:</strong> {{ risk.reasons | join(' · ') }}</p>
+      {% endif %}
+    </article>
+    <!-- Profil -->
+    <article class="chart-card">
+      <h2>Profil</h2>
+      <div class="detail-list">
+        <div><span>Temsilci</span><strong>{{ m.account_manager or '—' }}</strong></div>
+        <div><span>Tier</span><strong>{{ m.tier or '—' }}</strong></div>
+        <div><span>Plan</span><strong>{{ plan.name }} (%{{ plan.rate_pct }})</strong></div>
+        <div><span>İletişim tercihi</span><strong>{{ m.preferred_channel }}</strong></div>
+        <div><span>Telefon</span><strong>{{ m.phone }}</strong></div>
+        <div><span>E-posta</span><strong>{{ m.email }}</strong></div>
+        <div><span>IBAN</span><strong>{{ m.iban_masked }}</strong></div>
+        <div><span>Katılım</span><strong>{{ m.joined }}</strong></div>
+        <div><span>Pazarlama izni</span><strong>{{ 'Var' if m.marketing_opt_in else 'Yok' }}</strong></div>
+        <div><span>Ürünler</span><strong>{{ m.products | join(', ') }}</strong></div>
+      </div>
+      {% if m.notes %}<p class="chart-note">{{ m.notes }}</p>{% endif %}
+    </article>
+  </section>
+
+  <section class="chart-grid" style="grid-template-columns: 1fr 1fr;">
+    <!-- Hakedisler -->
+    <article class="chart-card">
+      <h2>Son hakedişler</h2>
+      {% if data.settlements %}
+      <table class="data-table">
+        <thead><tr><th>Parti</th><th>Tarih</th><th>Brüt</th><th>Durum</th></tr></thead>
+        <tbody>
+          {% for s in data.settlements %}
+          <tr>
+            <td>{{ s.batch_id }}</td>
+            <td>{{ (s.batch_date or '')[:10] }}</td>
+            <td>{{ s.gross_try | tl }}</td>
+            <td>
+              {% set sc = 'cold' if s.status == 'ödendi' else ('warm' if s.status == 'planlandı' else 'hot') %}
+              <span class="temp-badge {{ sc }}">{{ s.status }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty-inline">Hakediş kaydı yok.</p>{% endif %}
+    </article>
+    <!-- Islemler -->
+    <article class="chart-card">
+      <h2>Son işlemler</h2>
+      {% if data.transactions %}
+      <table class="data-table">
+        <thead><tr><th>Tarih</th><th>Tutar</th><th>Kanal</th><th>Durum</th></tr></thead>
+        <tbody>
+          {% for t in data.transactions[:12] %}
+          <tr>
+            <td><small>{{ (t.timestamp or '')[:16] | replace('T', ' ') }}</small></td>
+            <td>{{ t.amount_try | tl }}</td>
+            <td>{{ t.channel }}</td>
+            <td>{{ t.status }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty-inline">İşlem kaydı yok.</p>{% endif %}
+    </article>
+  </section>
+
+  <section class="chart-grid" style="grid-template-columns: 1fr 1fr;">
+    <!-- POS cihazlari -->
+    <article class="chart-card">
+      <h2>POS cihazları</h2>
+      {% if data.devices %}
+      <table class="data-table">
+        <thead><tr><th>Terminal</th><th>Model</th><th>Durum</th><th>Son görülme</th></tr></thead>
+        <tbody>
+          {% for d in data.devices %}
+          <tr>
+            <td>{{ d.terminal_id }}</td>
+            <td>{{ d.model }}</td>
+            <td>{{ d.status }}{% if d.note %}<small style="display:block;color:var(--danger);">{{ d.note }}</small>{% endif %}</td>
+            <td><small>{{ (d.last_seen_at or '')[:16] | replace('T', ' ') }}</small></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="empty-inline">Cihaz kaydı yok.</p>{% endif %}
+    </article>
+    <!-- Temas gecmisi (icgoruler haric) -->
+    <article class="chart-card">
+      <h2>Temas geçmişi</h2>
+      {% set contacts = data.contacts | rejectattr('source', 'equalto', 'insight') | list %}
+      {% if contacts %}
+      <div class="timeline">
+        {% for c in contacts %}
+        <div class="timeline-row">
+          <span class="timeline-dot {{ 'in' if c.direction == 'inbound' else 'out' }}"></span>
+          <div class="timeline-main">
+            <strong>{{ c.subject }}
+              {% if c.source == 'ai' %}<span class="temp-badge cold" style="font-size:0.6rem;">AI · canlı</span>{% endif %}
+            </strong>
+            <small style="color:var(--muted);">{{ (c.contacted_at or '')[:10] }} · {{ c.channel }} · {{ c.rep or '—' }}</small>
+            {% if c.note %}<p>{{ c.note }}</p>{% endif %}
+            {% if c.source in ['ai', 'insight'] and c.session_id %}
+              <a href="{{ url_for('conversation_detail', session_id=c.session_id) }}" style="font-size:0.78rem; color:var(--accent);">↗ bu konuşmayı aç</a>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<p class="empty-inline">Temas kaydı yok.</p>{% endif %}
+    </article>
+  </section>
+
+  {% if data.insights %}
+  <!-- Agent'in konusmalardan cikardigi kalici CRM icgoruleri -->
+  <section class="chart-card" style="margin-top: 18px;">
+    <h2>💡 CRM İçgörüleri <small style="color:var(--muted); font-weight:400;">— agent konuşmalardan çıkardı</small></h2>
+    <div class="timeline">
+      {% for i in data.insights %}
+      <div class="timeline-row">
+        <span class="timeline-dot in"></span>
+        <div class="timeline-main">
+          <strong>{{ i.subject }}</strong>
+          <small style="color:var(--muted);">{{ (i.contacted_at or '')[:10] }} · {{ i.rep or 'AI' }}</small>
+          {% if i.note %}<p>{{ i.note }}</p>{% endif %}
+          {% if i.session_id %}
+            <a href="{{ url_for('conversation_detail', session_id=i.session_id) }}" style="font-size:0.78rem; color:var(--accent);">↗ bu konuşmayı aç</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Operasyon (admin_store ile cross-DB birlestirme) -->
+  <section class="chart-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+    <article class="chart-card">
+      <h2>Konuşmalar
+        {% if ops.handoff_waiting %}<span class="temp-badge hot">devir bekliyor</span>{% endif %}
+      </h2>
+      {% if ops.conversations %}
+      <div class="timeline">
+        {% for conv in ops.conversations[:8] %}
+        <a class="timeline-row" href="{{ url_for('conversation_detail', session_id=conv.session_id) }}" style="text-decoration:none; color:inherit;">
+          <span class="timeline-dot out"></span>
+          <div class="timeline-main">
+            <strong>{{ conv.channel }} · {{ conv.turn_count }} tur</strong>
+            <small style="color:var(--muted);">{{ (conv.last_message_at or '')[:16] | replace('T', ' ') }}</small>
+            {% if conv.last_user_input %}<p>{{ conv.last_user_input[:80] }}</p>{% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}<p class="empty-inline">Bu işletmeyle eşleşen konuşma yok.</p>{% endif %}
+    </article>
+    <article class="chart-card">
+      <h2>Gelir/lead olayları</h2>
+      {% if ops.lead_events %}
+      <div class="timeline">
+        {% for ev in ops.lead_events[:8] %}
+        <div class="timeline-row">
+          <span class="timeline-dot in"></span>
+          <div class="timeline-main">
+            <strong>{{ ev.event_type }}</strong>
+            <small style="color:var(--muted);">{{ (ev.created_at or '')[:16] | replace('T', ' ') }}</small>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<p class="empty-inline">Kayıtlı olay yok.</p>{% endif %}
+    </article>
+    <article class="chart-card">
+      <h2>Açık görevler</h2>
+      {% set open_tasks = ops.tasks | selectattr('done', 'equalto', false) | list %}
+      {% if open_tasks %}
+      <div class="task-list">
+        {% for task in open_tasks %}
+        <div class="task-row">
+          <span class="task-priority manual">GÖREV</span>
+          <div class="task-main"><strong>{{ task.title }}</strong></div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}<p class="empty-inline">Açık görev yok.</p>{% endif %}
+    </article>
+  </section>
+
+<script>
+  var series = {{ m.monthly_volume_try | tojson }};
+  mokaLineChart("revenue-chart",
+    series.map(function (p) { return { label: (p.month || "").slice(5), value: p.volume }; }));
+</script>
+{% endblock %}

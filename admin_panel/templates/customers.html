@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Müşteriler — {{ panel_project }}{% endblock %}
+
+{% macro risk_class(tier) %}{{ 'hot' if tier in ['kritik', 'yüksek'] else ('warm' if tier == 'orta' else 'cold') }}{% endmacro %}
+{% macro seg_class(seg) %}{{ 'hot' if seg == 'uyuyan' else ('warm' if seg == 'daralıyor' else ('cold' if seg == 'stabil' else 'ok')) }}{% endmacro %}
+
+{% block content %}
+  <div class="page-header">
+    <h1>Müşteriler</h1>
+    <p>İşletme-360 görünümü — tüm portföy tek ekranda: ciro, plan, risk ve son temas. Bir satıra tıklayın.</p>
+  </div>
+
+  <section class="stats-grid" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+    <article class="stat-card">
+      <span>Toplam işletme</span>
+      <strong>{{ summary.merchant_count }}</strong>
+    </article>
+    <article class="stat-card highlight">
+      <span>Bu ay toplam ciro</span>
+      <strong>{{ summary.total_last_month_try | tl }}</strong>
+      <em class="trend flat">portföy geneli</em>
+    </article>
+    <article class="stat-card">
+      <span>Riskli müşteri</span>
+      <strong>{{ (summary.count_by_risk_tier.get('kritik', 0) + summary.count_by_risk_tier.get('yüksek', 0)) }}</strong>
+      <em class="trend down">kritik + yüksek</em>
+    </article>
+    <article class="stat-card">
+      <span>Uyuyan işletme</span>
+      <strong>{{ summary.count_by_segment.get('uyuyan', 0) }}</strong>
+      <em class="trend down">acil temas gerekli</em>
+    </article>
+  </section>
+
+  <section class="chart-card" style="margin-top: 18px;">
+    <form class="customer-filters" method="get">
+      <select name="tier" aria-label="Tier">
+        <option value="">Tüm segmentler (tier)</option>
+        {% for t in ['kurumsal', 'orta', 'mikro'] %}
+        <option value="{{ t }}" {{ 'selected' if filters.tier == t }}>{{ t | capitalize }}</option>
+        {% endfor %}
+      </select>
+      <select name="segment" aria-label="Yaşam döngüsü">
+        <option value="">Tüm durumlar</option>
+        {% for s in ['büyüyor', 'stabil', 'daralıyor', 'uyuyan'] %}
+        <option value="{{ s }}" {{ 'selected' if filters.segment == s }}>{{ s | capitalize }}</option>
+        {% endfor %}
+      </select>
+      <select name="risk" aria-label="Risk">
+        <option value="">Tüm riskler</option>
+        {% for r in ['kritik', 'yüksek', 'orta', 'düşük'] %}
+        <option value="{{ r }}" {{ 'selected' if filters.risk == r }}>{{ r | capitalize }} risk</option>
+        {% endfor %}
+      </select>
+      <select name="rep" aria-label="Temsilci">
+        <option value="">Tüm temsilciler</option>
+        {% for r in reps %}
+        <option value="{{ r }}" {{ 'selected' if filters.rep == r }}>{{ r }}</option>
+        {% endfor %}
+      </select>
+      <select name="sort" aria-label="Sıralama">
+        {% for value, label in [('risk', 'Riske göre'), ('volume', 'Ciroya göre'), ('change', 'Değişime göre'), ('name', 'İsme göre')] %}
+        <option value="{{ value }}" {{ 'selected' if filters.sort == value }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="button">Uygula</button>
+      <a class="button secondary" href="{{ url_for('customers') }}">Sıfırla</a>
+      <span style="flex:1"></span>
+      <a class="button secondary" href="{{ url_for('export_customers_csv') }}">CSV indir</a>
+      <a class="button secondary" href="{{ url_for('reports') }}">Raporlar →</a>
+    </form>
+  </section>
+
+  <section class="chart-card" style="margin-top: 18px;">
+    {% if customers %}
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>İşletme</th>
+          <th>Temsilci</th>
+          <th>Plan / Tier</th>
+          <th>Son 6 ay</th>
+          <th>Bu ay ciro</th>
+          <th>Değişim</th>
+          <th>Risk</th>
+          <th>Segment</th>
+          <th>Son temas</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in customers %}
+        <tr class="clickable-row" onclick="window.location='{{ url_for('customer_detail', merchant_id=c.merchant_id) }}'">
+          <td>
+            <strong>{{ c.business_name }}</strong>
+            <small style="display:block; color: var(--muted);">{{ c.owner_name }} · {{ c.city }}
+              {% if c.status != 'active' %}<span class="temp-badge warm" style="margin-left:4px;">{{ c.status }}</span>{% endif %}
+            </small>
+          </td>
+          <td>{{ c.account_manager or '—' }}</td>
+          <td>{{ c.plan_name }}<small style="display:block; color: var(--muted);">{{ c.tier }}</small></td>
+          <td>
+            {% set series = c.volume_series %}
+            {% set peak = (series | max) or 1 %}
+            <svg viewBox="0 0 120 32" width="120" height="32" class="sparkline sparkline-ok">
+              {% set pts = [] %}
+              {% for v in series %}
+                {% set x = (loop.index0 / ([series | length - 1, 1] | max) * 112 + 4) | round(1) %}
+                {% set y = (28 - (v / peak * 24)) | round(1) %}
+                {% set _ = pts.append(x ~ ',' ~ y) %}
+              {% endfor %}
+              <polyline points="{{ pts | join(' ') }}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </td>
+          <td><strong>{{ c.last_month_try | tl }}</strong></td>
+          <td>
+            {% if c.change_pct > 0 %}<span class="trend up">▲ %{{ c.change_pct }}</span>
+            {% elif c.change_pct < 0 %}<span class="trend down">▼ %{{ c.change_pct | abs }}</span>
+            {% else %}<span class="trend flat">%0</span>{% endif %}
+          </td>
+          <td><span class="temp-badge {{ risk_class(c.risk_tier) }}">{{ c.risk_tier }} · {{ c.risk_score }}</span></td>
+          <td>{{ c.segment }}</td>
+          <td><small style="color: var(--muted);">{{ (c.last_contact_at or '—')[:10] }}</small></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-inline">Bu filtreye uyan müşteri yok.</p>
+    {% endif %}
+  </section>
+{% endblock %}

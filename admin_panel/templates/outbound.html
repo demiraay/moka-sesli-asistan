@@ -3,8 +3,16 @@
 {% block title %}Uyuyan İşletmeler — {{ panel_project }}{% endblock %}
 
 {% block content %}
-  {# auto-refresh: demo sirasinda arama bitince KPI'lar elle yenilemeden aksin #}
-  <script>setTimeout(function () { window.location.reload(); }, 20000);</script>
+  {# auto-refresh: demo sirasinda arama bitince KPI'lar elle yenilemeden aksin.
+     Ada'ya soru sorulduysa yenileme ERTELENIR, yoksa cevap okunurken sayfa gider. #}
+  <script>
+    (function tick() {
+      setTimeout(function () {
+        if (window.__opsBusy) { tick(); return; }
+        window.location.reload();
+      }, 20000);
+    })();
+  </script>
   <div class="page-header">
     <h1>Uyuyan İşletmeler</h1>
     <p>İşlem hacmi ciddi düşen müşteriler — sessizce kaybedilmeden önce AI kurtarma araması yapın.</p>
@@ -20,6 +28,20 @@
       <strong>{{ total_risk_try | tl }}</strong>
       <em class="trend down">kurtarılmazsa kaybedilecek komisyon tabanı</em>
     </article>
+  </section>
+
+  <section class="chart-card ops-console" style="margin-top: 18px;">
+    <div class="ops-head">
+      <h2>Ada'ya sor</h2>
+      <p>Operasyon sorusu sorun — Ada müşteri verisine kendi bakar, önceliklendirir.
+         (Bu ekran ekip içidir; müşteri görüşmesi değildir.)</p>
+    </div>
+    <form class="ops-form" id="ops-form" autocomplete="off">
+      <input type="text" id="ops-input" maxlength="500" required
+             placeholder="Örn: Bu hafta kimleri aramalıyız? En çok hacim kaybeden kim?">
+      <button type="submit" class="button" id="ops-send">Sor</button>
+    </form>
+    <div class="ops-answer" id="ops-answer" hidden></div>
   </section>
 
   {% if dormant %}
@@ -102,4 +124,61 @@
       Kabul edilen teklifler Komuta Merkezi'ndeki <strong>Kurtarılan Hacim</strong> sayacına işlenir.
     </p>
   </section>
+
+<script>
+  (function () {
+    const form = document.getElementById("ops-form");
+    const input = document.getElementById("ops-input");
+    const sendBtn = document.getElementById("ops-send");
+    const answer = document.getElementById("ops-answer");
+    if (!form) return;
+
+    // Sayfa 20 sn'de bir kendini yeniliyor; cevap okunurken kesilmesin.
+    let autoReloadCancelled = false;
+    function cancelAutoReload() {
+      if (!autoReloadCancelled) { autoReloadCancelled = true; window.__opsBusy = true; }
+    }
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      const question = input.value.trim();
+      if (!question) return;
+
+      cancelAutoReload();
+      sendBtn.disabled = true;
+      sendBtn.textContent = "Bakıyor…";
+      answer.hidden = false;
+      answer.textContent = "Ada verilere bakıyor…";
+
+      try {
+        const response = await fetch("/admin/ops/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: question }),
+        });
+        const data = await response.json();
+        answer.textContent = "";
+
+        const text = document.createElement("p");
+        text.className = "ops-reply";
+        text.textContent = data.reply || data.error || "Cevap alınamadı.";
+        answer.appendChild(text);
+
+        // Hangi araclarla cevapladigi gorunur olsun — panelde de seffaflik.
+        if (data.tools && data.tools.length) {
+          const chain = document.createElement("div");
+          chain.className = "ops-chain";
+          chain.textContent = "araçlar: " + data.tools.join(" → ");
+          answer.appendChild(chain);
+        }
+        input.value = "";
+      } catch (error) {
+        answer.textContent = "Bağlantı hatası: " + error;
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.textContent = "Sor";
+      }
+    });
+  })();
+</script>
 {% endblock %}

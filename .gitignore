@@ -6,6 +6,14 @@ __pycache__/
 # Calisma zamani verisi — gercek konusmalar ve telefon numaralari icerir, push etme!
 data/admin.sqlite3
 
+# Is verisi: scripts/seed_data/*.json'dan URETILIR, kaynak degildir.
+#   python3 scripts/seed_demo_data.py
+data/moka.sqlite3
+
+# SQLite WAL yan dosyalari
+*.sqlite3-wal
+*.sqlite3-shm
+
 # Node / WhatsApp Web istemcisi
 node_modules/
 whatsapp_mesaj_bot/.wwebjs_auth/
@@ -14,3 +22,8 @@ whatsapp_mesaj_bot/.wwebjs_cache/
 # Panel foto yuklemeleri (runtime verisi)
 data/uploads/
 .venv/
+.env.backup
+
+# macOS
+.DS_Store
+**/.DS_Store

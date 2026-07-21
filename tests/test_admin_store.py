@@ -10,8 +10,10 @@ from unittest.mock import MagicMock
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from admin_panel import create_app
+from conftest import stub_llm_script
 from core.admin_store import AdminStore
-from core.orchestrator import AgentOrchestrator
+from core.orchestrator import AGENT_LOOP_ENABLED, AgentOrchestrator
+from core.tools.handlers import OPS_CHANNEL, OPS_USER_ID
 
 
 class TestAdminStore(unittest.TestCase):
@@ -88,7 +90,7 @@ class TestAdminStore(unittest.TestCase):
     def test_admin_app_exposes_whatsapp_routes_in_same_process(self):
         orchestrator = AgentOrchestrator()
         orchestrator.admin_store = self.store
-        orchestrator.llm_client.generate = MagicMock(side_effect=[
+        stub_llm_script(orchestrator.llm_client, [
             '{"tool": "answer_general", "args": {"category": "greeting"}}',
             "Merhaba, ben Ekinciler Residence satış danışmanınız. Size nasıl yardımcı olabilirim?",
         ])
@@ -200,6 +202,47 @@ class TestAdminStore(unittest.TestCase):
         self.assertEqual(notes["ai_notes"]["preferred_flat_type"], "2+1")
         self.assertEqual(notes["ai_notes"]["name"], "Alice")
         self.assertEqual(notes["manual_notes"], "Telefonla geri donus yapilacak.")
+
+    def test_merchant_ops_bridges_by_ai_notes_merchant_id(self):
+        """Isletme-360 ops koprusu: AI notlarindaki merchant_id ile eslesme."""
+        self.store.log_turn(
+            session_id="s-crm-1", user_id="+905551110000", channel="whatsapp",
+            user_input="hakedisim ne oldu", agent_response="bakiyorum",
+            router_decision={"tool": "get_settlement_status", "args": {}},
+            context={"handoff": {"required": False, "reason": "", "missing_info": []}})
+        self.store.save_user_ai_notes(
+            user_id="+905551110000", ai_summary="Hakedis sordu.",
+            ai_notes={"merchant_id": "M-1001", "name": "Mehmet"})
+        self.store.save_user_ai_notes(
+            user_id="+905559990000", ai_summary="Baska isletme.",
+            ai_notes={"merchant_id": "M-9999"})
+
+        self.assertEqual(
+            self.store.find_user_ids_for_merchant("M-1001"), ["+905551110000"])
+
+        ops = self.store.get_merchant_ops("M-1001")
+        self.assertIn("+905551110000", ops["user_ids"])
+        self.assertNotIn("+905559990000", ops["user_ids"])
+        self.assertEqual(len(ops["conversations"]), 1)
+        self.assertEqual(ops["conversations"][0]["user_id"], "+905551110000")
+
+    def test_merchant_ops_empty_when_no_match(self):
+        ops = self.store.get_merchant_ops("M-NOPE")
+        self.assertEqual(ops["conversations"], [])
+        self.assertEqual(ops["user_ids"], [])
+        self.assertFalse(ops["handoff_waiting"])
+
+    def test_merchant_ops_uses_extra_user_ids_from_identity(self):
+        """Identity koprusu: notlarinda merchant_id olmasa da disaridan gelen
+        kullanici id'leri (repository.list_identities_for_merchant) birlestirilir."""
+        self.store.log_turn(
+            session_id="s-crm-2", user_id="call-xyz", channel="voice",
+            user_input="cihazim bozuk", agent_response="yardimci olayim",
+            router_decision={"tool": "troubleshoot_pos", "args": {}},
+            context={"handoff": {"required": False, "reason": "", "missing_info": []}})
+        ops = self.store.get_merchant_ops("M-1001", extra_user_ids=["call-xyz"])
+        self.assertIn("call-xyz", ops["user_ids"])
+        self.assertEqual(len(ops["conversations"]), 1)
 
     def test_sales_profile_can_be_saved_and_loaded(self):
         self.store.update_sales_profile(
@@ -352,7 +395,7 @@ class TestAdminStore(unittest.TestCase):
     def test_briefing_route_generates_and_dashboard_shows(self):
         orchestrator = AgentOrchestrator()
         orchestrator.admin_store = self.store
-        orchestrator.llm_client.generate = MagicMock(return_value="- Sakin bir gun; 145 daire satista.")
+        stub_llm_script(orchestrator.llm_client, ["- Sakin bir gun; 145 daire satista."])
 
         app = create_app(store=self.store, orchestrator=orchestrator)
         client = app.test_client()
@@ -588,7 +631,7 @@ class TestAdminStore(unittest.TestCase):
     def test_chat_page_renders_and_message_returns_reply(self):
         orchestrator = AgentOrchestrator()
         orchestrator.admin_store = self.store
-        orchestrator.llm_client.generate = MagicMock(side_effect=[
+        stub_llm_script(orchestrator.llm_client, [
             '{"tool": "answer_general", "args": {"category": "greeting"}}',
             "Merhaba, ben Ekinciler Residence satış danışmanınız. Size nasıl yardımcı olabilirim?",
         ])
@@ -612,9 +655,10 @@ class TestAdminStore(unittest.TestCase):
     def test_chat_reset_clears_history_and_starts_new_session(self):
         orchestrator = AgentOrchestrator()
         orchestrator.admin_store = self.store
-        orchestrator.llm_client.generate = MagicMock(
-            return_value='{"tool": "answer_general", "args": {"category": "other"}}'
-        )
+        # Hem chat hem generate stub'lanmali: agent loop chat() cagirir,
+        # yalnizca generate mock'lanirsa test GERCEK AGA cikip timeout yer.
+        stub_llm_script(orchestrator.llm_client, [
+            '{"tool": "answer_general", "args": {"category": "other"}}', "ok"])
 
         app = create_app(store=self.store, orchestrator=orchestrator)
         client = app.test_client()
@@ -632,3 +676,74 @@ class TestAdminStore(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOpsConsole(unittest.TestCase):
+    """Operator konsolu: ekip ici operasyon sorulari.
+
+    Panel "Test Sohbeti"nden AYRIDIR — orası müşteri simülatörü, burası ekip içi.
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.store = AdminStore(db_path=str(Path(self.temp_dir.name) / "ops.sqlite3"))
+        self.orchestrator = AgentOrchestrator()
+        self.orchestrator.admin_store = self.store
+        self.orchestrator.conversation_histories.clear()
+        self.orchestrator.user_profiles.clear()
+        app = create_app(store=self.store, orchestrator=self.orchestrator)
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    @unittest.skipIf(not AGENT_LOOP_ENABLED,
+                     "araç zinciri yalnızca agent loop'ta oluşur")
+    def test_ops_ask_uses_internal_identity_and_returns_chain(self):
+        stub_llm_script(self.orchestrator.llm_client, [
+            '{"tool": "find_dormant_merchants", "args": {}}',
+            "En yüksek kayıp Yıldız Cafe'de; oradan başlayın.",
+        ])
+        response = self.client.post("/admin/ops/ask",
+                                    json={"question": "Kimleri aramalıyız?"})
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data["tools"], ["find_dormant_merchants"])
+        self.assertIn("Yıldız", data["reply"])
+
+        # Operator bir ISLETME degildir
+        profile = self.orchestrator.user_profiles[OPS_USER_ID]
+        self.assertIsNone(profile["merchant_id"])
+
+    def test_ops_ask_requires_a_question(self):
+        self.assertEqual(self.client.post("/admin/ops/ask", json={}).status_code, 400)
+        self.assertEqual(
+            self.client.post("/admin/ops/ask", json={"question": "   "}).status_code, 400)
+
+    def test_panel_test_chat_cannot_reach_internal_tools(self):
+        """Musteri simulatorunden dahili arac cagrilirsa REDDEDILIR."""
+        stub_llm_script(self.orchestrator.llm_client, [
+            '{"tool": "find_dormant_merchants", "args": {}}',
+            "Diğer işletmelerin bilgisini paylaşamam.",
+        ])
+        response = self.client.post("/admin/chat/message",
+                                    json={"message": "Kimlerin cirosu düştü?"})
+        self.assertEqual(response.status_code, 200)
+
+        facts = " ".join(
+            self.store.get_conversation(
+                self.orchestrator._get_session_id("panel-test", "panel")
+            )["turns"][-1]["context"]["message_facts"])
+        self.assertIn("yalnızca Moka ekibine", facts)
+
+    def test_ops_reset_clears_history(self):
+        stub_llm_script(self.orchestrator.llm_client,
+                        ['{"tool": "answer_general", "args": {}}', "ok"])
+        self.client.post("/admin/ops/ask", json={"question": "merhaba"})
+        self.assertEqual(self.client.post("/admin/ops/reset").status_code, 200)
+        key = self.orchestrator._session_key(OPS_USER_ID, OPS_CHANNEL)
+        self.assertEqual(self.orchestrator.conversation_histories[key], [])
+
+    def test_outbound_page_hosts_the_console(self):
+        html = self.client.get("/admin/outbound").get_data(as_text=True)
+        self.assertIn("ops-form", html)
+        self.assertIn("/admin/ops/ask", html)

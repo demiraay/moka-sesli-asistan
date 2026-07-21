@@ -13,6 +13,7 @@ test ve otomatik testler icin STT atlanir).
 
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from pathlib import Path
@@ -21,8 +22,14 @@ from flask import jsonify, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from core.config import Config
+from core.tools import panel_tool_labels
 from core.voice import (CompositeTranscriber, ElevenLabsSynthesizer,
                         VOICE_CATALOG, VOICE_PREVIEW_TEXT)
+
+
+def _sse(event: str, payload: dict) -> str:
+    """Tek bir Server-Sent Event satiri."""
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def register_call_routes(app, orchestrator) -> None:
@@ -68,14 +75,7 @@ def register_call_routes(app, orchestrator) -> None:
     def call_page():
         mode = request.args.get("mode", "inbound")
         merchant_id = request.args.get("merchant_id", "")
-        merchants = [
-            {
-                "merchant_id": m.get("merchant_id"),
-                "business_name": m.get("business_name"),
-                "owner_name": m.get("owner_name"),
-            }
-            for m in config.merchants
-        ]
+        merchants = config.repository.list_merchant_options()
         details = config.get_project_details()
         return render_template(
             "call.html",
@@ -83,6 +83,7 @@ def register_call_routes(app, orchestrator) -> None:
             merchant_id=merchant_id,
             merchants=merchants,
             voices=VOICE_CATALOG,
+            tool_labels=panel_tool_labels(),
             default_voice_id=_default_voice_id(),
             support_line=details.get("support_line", ""),
         )
@@ -124,44 +125,51 @@ def register_call_routes(app, orchestrator) -> None:
             "latency_ms": {"llm": llm_ms, "tts": tts_ms},
         })
 
+    def _transcribe_request(call_id: str):
+        """Istekten metni cikarir: 'text' alani varsa STT atlanir.
+
+        Doner: (transcript, engine, stt_ms, hata_yaniti). Hata varsa transcript
+        None gelir ve cagiran o yaniti dondurur.
+        """
+        text_input = (request.form.get("text") or "").strip()
+        if text_input:
+            return text_input, "text", 0, None
+
+        audio_file = request.files.get("audio")
+        if audio_file is None:
+            return None, "", 0, (jsonify({"error": "audio dosyasi ya da text alani gerekli"}), 400)
+
+        suffix = Path(secure_filename(audio_file.filename or "turn.webm")).suffix or ".webm"
+        input_path = voice_dir / f"in-{uuid.uuid4().hex[:10]}{suffix}"
+        audio_file.save(input_path)
+
+        started = time.perf_counter()
+        try:
+            transcription = transcriber.transcribe(
+                str(input_path), prompt=call_stt_prompts.get(call_id, STT_LEXICON))
+        except Exception as error:
+            print(f"STT error: {error}")
+            return None, "", 0, (jsonify({"error": "Ses cozumlenemedi", "detail": str(error)}), 502)
+
+        stt_ms = int((time.perf_counter() - started) * 1000)
+        return (transcription.get("text", "").strip(),
+                transcription.get("engine", "unknown"), stt_ms, None)
+
     @app.route("/call/turn", methods=["POST"])
     def call_turn():
         call_id = request.form.get("call_id") or request.args.get("call_id")
         if not call_id:
             return jsonify({"error": "call_id gerekli"}), 400
 
-        text_input = (request.form.get("text") or "").strip()
-        stt_ms = 0
-        transcript = text_input
-        stt_engine = "text"
-
-        if not text_input:
-            audio_file = request.files.get("audio")
-            if audio_file is None:
-                return jsonify({"error": "audio dosyasi ya da text alani gerekli"}), 400
-            suffix = Path(secure_filename(audio_file.filename or "turn.webm")).suffix or ".webm"
-            input_path = voice_dir / f"in-{uuid.uuid4().hex[:10]}{suffix}"
-            audio_file.save(input_path)
-
-            started = time.perf_counter()
-            try:
-                transcription = transcriber.transcribe(
-                    str(input_path), prompt=call_stt_prompts.get(call_id, STT_LEXICON)
-                )
-            except Exception as error:
-                print(f"STT error: {error}")
-                return jsonify({"error": "Ses cozumlenemedi", "detail": str(error)}), 502
-            stt_ms = int((time.perf_counter() - started) * 1000)
-            transcript = transcription.get("text", "").strip()
-            stt_engine = transcription.get("engine", "unknown")
-            if not transcript:
-                return jsonify({
-                    "transcript": "",
-                    "reply_text": None,
-                    "audio_url": None,
-                    "empty": True,
-                    "latency_ms": {"stt": stt_ms, "llm": 0, "tts": 0},
-                })
+        transcript, stt_engine, stt_ms, failure = _transcribe_request(call_id)
+        if failure is not None:
+            return failure
+        if not transcript:
+            return jsonify({
+                "transcript": "", "reply_text": None, "audio_url": None,
+                "empty": True,
+                "latency_ms": {"stt": stt_ms, "llm": 0, "tts": 0},
+            })
 
         started = time.perf_counter()
         turn = orchestrator.process_turn(transcript, user_id=call_id, channel="voice")
@@ -172,11 +180,17 @@ def register_call_routes(app, orchestrator) -> None:
                                         call_voice_ids.get(call_id))
 
         handoff = bool((turn.get("context") or {}).get("handoff", {}).get("required"))
+        decision = turn.get("router_decision") or {}
         return jsonify({
             "transcript": transcript,
             "reply_text": reply_text,
             "audio_url": audio_url,
-            "tool": (turn.get("router_decision") or {}).get("tool"),
+            "tool": decision.get("tool"),
+            # Cok adimli loop telemetrisi: tek turda birden fazla arac
+            # calisabilir. Gecikme regresyonu burada gorunur.
+            "tools": [item.get("name") for item in decision.get("tools", [])],
+            "iterations": decision.get("iterations", 1),
+            "stop_reason": decision.get("stop_reason", ""),
             "handoff": handoff,
             "stt_engine": stt_engine,
             "latency_ms": {
@@ -186,6 +200,68 @@ def register_call_routes(app, orchestrator) -> None:
                 "total": stt_ms + llm_ms + tts_ms,
             },
         })
+
+    @app.route("/call/turn/stream", methods=["POST"])
+    def call_turn_stream():
+        """/call/turn'un AKAN surumu (Server-Sent Events).
+
+        Cevap tek blok halinde degil, uretildikce yazilir. Ses sentezi metin
+        TAMAMLANDIKTAN sonra yapilir (TTS tam metne ihtiyac duyar), bu yuzden
+        'done' olayinda gelir.
+        """
+        call_id = request.form.get("call_id") or request.args.get("call_id")
+        if not call_id:
+            return jsonify({"error": "call_id gerekli"}), 400
+
+        transcript, stt_engine, stt_ms, failure = _transcribe_request(call_id)
+        if failure is not None:
+            return failure
+        if not transcript:
+            return jsonify({"transcript": "", "reply_text": None, "audio_url": None,
+                            "empty": True,
+                            "latency_ms": {"stt": stt_ms, "llm": 0, "tts": 0}})
+
+        def events():
+            started = time.perf_counter()
+            turn = {}
+            try:
+                for kind, payload in orchestrator.process_turn_stream(
+                        transcript, user_id=call_id, channel="voice"):
+                    if kind == "delta":
+                        yield _sse("delta", {"text": payload})
+                    elif kind == "tool":
+                        yield _sse("tool", {"name": payload})
+                    else:
+                        turn = payload
+            except Exception as error:                      # pragma: no cover
+                print(f"Stream error: {error}")
+                yield _sse("error", {"detail": str(error)})
+                return
+
+            llm_ms = int((time.perf_counter() - started) * 1000)
+            reply_text = turn.get("agent_response", "")
+            audio_url, tts_ms = _synthesize(reply_text, f"reply-{call_id}",
+                                            call_voice_ids.get(call_id))
+            decision = turn.get("router_decision") or {}
+            yield _sse("done", {
+                "transcript": transcript,
+                "stt_engine": stt_engine,
+                "reply_text": reply_text,
+                "audio_url": audio_url,
+                "tool": decision.get("tool"),
+                "tools": [item.get("name") for item in decision.get("tools", [])],
+                "iterations": decision.get("iterations", 1),
+                "stop_reason": decision.get("stop_reason", ""),
+                "handoff": bool((turn.get("context") or {}).get("handoff", {}).get("required")),
+                "latency_ms": {"stt": stt_ms, "llm": llm_ms, "tts": tts_ms,
+                               "total": stt_ms + llm_ms + tts_ms},
+            })
+
+        return app.response_class(
+            events(),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.route("/call/voice-preview/<voice_id>")
     def voice_preview(voice_id: str):

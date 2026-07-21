@@ -6,6 +6,9 @@
     <title>{% block title %}{{ panel_project }}{% endblock %}</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2300a650'/%3E%3Ctext x='16' y='22' font-size='17' font-weight='700' font-family='Arial' text-anchor='middle' fill='white'%3EM%3C/text%3E%3C/svg%3E">
     <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}?v={{ css_version }}">
+    {# Genel SVG grafik cizerleri (Musteriler/Raporlar). Senkron: icerik blogundaki
+       inline script'ler render aninda mokaLineChart/mokaBarChart cagirabilsin. #}
+    <script src="{{ url_for('static', filename='charts.js') }}?v={{ css_version }}"></script>
     {# İlk render'da titreme olmasın diye daraltma durumu daha body parse edilmeden basılır. #}
     <script>try{if(localStorage.getItem("admin.sidebar.collapsed")==="1")document.documentElement.classList.add("sidebar-collapsed");if(localStorage.getItem("admin.theme")==="dark")document.documentElement.classList.add("theme-dark")}catch(e){}</script>
   </head>
@@ -46,6 +49,7 @@
           'block': '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
           'phone': '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/>',
           'moon': '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+          'id': '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M14 10h4M14 14h4M6.5 16a3 3 0 0 1 5 0"/>',
         } %}
         {# Gruplar destek+gelir operasyonuna gore sirali: gun ici operasyon >
            gelir motoru > araclar. Sesli Arama panel disinda /call'da yasar. #}
@@ -56,6 +60,10 @@
             ('conversations', 'Konuşmalar', 'messages', ('conversations', 'conversation_detail')),
             ('tasks', 'Görevler', 'check', ('tasks',)),
           ]),
+          ('Müşteri', [
+            ('customers', 'Müşteriler', 'grid', ('customers', 'customer_detail')),
+            ('reports', 'Raporlar', 'chart', ('reports',)),
+          ]),
           ('Gelir', [
             ('outbound', 'Uyuyan İşletmeler', 'moon', ('outbound',)),
           ]),
@@ -63,6 +71,7 @@
             ('call_page', 'Sesli Arama', 'phone', ('call_page',)),
             ('chat', 'Test Sohbeti', 'chat', ('chat',)),
             ('analytics', 'Analitik', 'chart', ('analytics',)),
+            ('test_profile', 'Gösterim Profili', 'id', ('test_profile',)),
             ('sales_profile', 'Temsilci Profili', 'profile', ('sales_profile',)),
             ('exceptions', 'İstisnalar', 'block', ('exceptions', 'remove_exception')),
           ]),

@@ -243,8 +243,19 @@ client.on("message", async (message) => {
       await message.reply(payload.reply);
     }
 
-    const chat = await message.getChat();
-    await sendFollowUpActions(chat, payload.follow_up_actions);
+    // Follow-up (konum paylasimi vb.) YALNIZCA varsa yapilir ve KENDI
+    // try/catch'inde durur. Onceden burada kosulsuz message.getChat()
+    // cagriliyordu; bu, bazi kimliklerde (@lid) patliyor, asil cevap ZATEN
+    // gittigi halde asagidaki catch tetiklenip her mesajin pesine "Sistem
+    // tarafinda gecici bir sorun oldu" spam'i gonderiyordu.
+    if (Array.isArray(payload.follow_up_actions) && payload.follow_up_actions.length) {
+      try {
+        const chat = await message.getChat();
+        await sendFollowUpActions(chat, payload.follow_up_actions);
+      } catch (followError) {
+        console.error("Follow-up gonderilemedi:", followError.message || followError);
+      }
+    }
   } catch (error) {
     console.error("Mesaj islenemedi:", error);
     // Hata mesaji gonderimi de basarisiz olabilir; sureci dusurmesin.

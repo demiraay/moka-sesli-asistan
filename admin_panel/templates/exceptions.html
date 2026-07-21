@@ -5,42 +5,73 @@
 {% block content %}
   <div class="page-header">
     <h1>İstisnalar</h1>
-    <p>Bu listedeki numaralara yapay zeka <strong>asla</strong> yanıt vermez. Mesajlari sessizce yok sayilir.</p>
+    <p>Susturulan kişilere yapay zeka <strong>asla</strong> yanıt vermez; mesajları
+       sessizce geçilir, siz elle cevaplayabilirsiniz.</p>
   </div>
 
-  <section class="exc-add-card">
+  {# Konuşan kişiler: WhatsApp'ta gelen kimlik çoğu zaman "@lid" (telefon değil),
+     elle yazılamaz. Bu yüzden konuşanları listeleyip tek tıkla susturuyoruz. #}
+  <section class="chart-card" style="margin-top: 4px;">
+    <h2 class="form-section-title">Konuşan kişiler</h2>
+    {% if contacts %}
+      <div class="exc-list">
+        {% for c in contacts %}
+          <div class="exc-row">
+            <div class="exc-row-main">
+              <span class="exc-user">{{ c.display }}</span>
+              <span class="exc-note">{{ c.channel }}{% if c.paused %} · insan devraldı{% endif %}</span>
+            </div>
+            <span class="exc-date">{{ c.last_label }}</span>
+            <form method="post" action="{{ url_for('toggle_exception', user_id=c.user_id) }}">
+              <input type="hidden" name="display" value="{{ c.display }}">
+              {% if c.blocked %}
+                <button type="submit" class="button secondary compact">AI'yı aç</button>
+              {% else %}
+                <button type="submit" class="button compact">AI'yı sustur</button>
+              {% endif %}
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">Henüz konuşan kimse yok.</div>
+    {% endif %}
+  </section>
+
+  <section class="exc-add-card" style="margin-top: 18px;">
     <form method="post" class="exc-form">
       <div class="exc-field">
-        <label for="exc-user">Numara veya kimlik</label>
+        <label for="exc-user">Elle ekle — numara veya kimlik</label>
         <input type="text" id="exc-user" name="user_id" autocomplete="off" required
-               placeholder="Or: +905551112233">
+               placeholder="Ör: +905551112233">
       </div>
       <div class="exc-field grow">
-        <label for="exc-note">Not (istege bagli)</label>
+        <label for="exc-note">Not (isteğe bağlı)</label>
         <input type="text" id="exc-note" name="note" autocomplete="off"
-               placeholder="Or: rakip firma, spam, tanidik...">
+               placeholder="Ör: rakip firma, spam, tanıdık...">
       </div>
       <button class="button" type="submit">İstisnaya ekle</button>
     </form>
   </section>
 
   {% if blocked %}
-    <div class="exc-list">
-      {% for item in blocked %}
-        <div class="exc-row">
-          <div class="exc-row-main">
-            <span class="exc-user">{{ item.user_id }}</span>
-            {% if item.note %}<span class="exc-note">{{ item.note }}</span>{% endif %}
+    <section class="chart-card" style="margin-top: 18px;">
+      <h2 class="form-section-title">Susturulanlar ({{ blocked | length }})</h2>
+      <div class="exc-list">
+        {% for item in blocked %}
+          <div class="exc-row">
+            <div class="exc-row-main">
+              <span class="exc-user">{{ item.user_id }}</span>
+              {% if item.note %}<span class="exc-note">{{ item.note }}</span>{% endif %}
+            </div>
+            <span class="exc-date">{{ item.created_label }}</span>
+            <form method="post" action="{{ url_for('remove_exception', user_id=item.user_id) }}"
+                  onsubmit="return confirm('{{ item.user_id }} tekrar açılsın mı? AI yeniden yanıt vermeye başlar.');">
+              <button type="submit" class="button secondary compact">AI'yı aç</button>
+            </form>
           </div>
-          <span class="exc-date">{{ item.created_label }}</span>
-          <form method="post" action="{{ url_for('remove_exception', user_id=item.user_id) }}"
-                onsubmit="return confirm('{{ item.user_id }} istisnadan çıkarilsin mi? AI tekrar konuşmaya baslar.');">
-            <button type="submit" class="button secondary compact">Kaldir</button>
-          </form>
-        </div>
-      {% endfor %}
-    </div>
-  {% else %}
-    <div class="empty-state">İstisna listesi bos. Yukaridan numara ekleyerek AI'i belirli kisilerle susturabilirsiniz.</div>
+        {% endfor %}
+      </div>
+    </section>
   {% endif %}
 {% endblock %}

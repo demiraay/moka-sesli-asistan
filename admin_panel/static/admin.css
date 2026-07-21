@@ -3968,3 +3968,192 @@ html.theme-dark textarea {
 }
 html.theme-dark .stat-card.highlight { border-color: rgba(0, 210, 100, 0.55); }
 html.theme-dark .button.secondary { background: var(--chip); color: var(--ink); }
+
+/* --- Operator konsolu (Proaktif Arama sayfasi) --------------------------
+   Panel "Test Sohbeti" musteri simulatorudur; BU ekran ekip icidir ve
+   asistanin tum musteri tabanini goren dahili araclarini kullanir. */
+.ops-console .ops-head h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.ops-console .ops-head p {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.ops-form {
+  display: flex;
+  gap: 8px;
+}
+.ops-form input {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft, rgba(0, 0, 0, 0.03));
+  color: inherit;
+  font-size: 13px;
+}
+.ops-form input:focus {
+  outline: none;
+  border-color: var(--accent, #4da3ff);
+}
+.ops-answer {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft, rgba(0, 0, 0, 0.03));
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.ops-answer .ops-reply {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.ops-chain {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  letter-spacing: 0.2px;
+}
+
+/* --- Gosterim profili formu --------------------------------------------- */
+.form-section-title {
+  font-size: 13px;
+  margin: 18px 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+.form-section-title:first-child { margin-top: 0; }
+.form-section-title small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  margin-left: 6px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.profile-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.profile-form label small { font-size: 11px; opacity: 0.75; }
+.profile-form input[type="text"],
+.profile-form input[type="number"],
+.profile-form select {
+  padding: 8px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft, rgba(0, 0, 0, 0.03));
+  color: inherit;
+  font-size: 13px;
+}
+.profile-form input:focus, .profile-form select:focus {
+  outline: none;
+  border-color: var(--accent, #4da3ff);
+}
+.checkbox-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.checkbox-chip {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.volume-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+.form-actions { margin-top: 18px; }
+
+/* ------------------------------------------------ CRM / Musteri-360 */
+
+/* Genel grafik cizerlerinin (charts.js) nokta isaretcileri */
+.chart-slot .dot { fill: var(--accent); }
+
+/* Sparkline: outbound'da kirmizi (churn); musteri listesinde notr */
+.sparkline-ok { color: var(--accent); }
+
+/* Tiklanabilir tablo satiri (liste -> 360) */
+.clickable-row { cursor: pointer; }
+.clickable-row:hover td { background: var(--accent-soft, rgba(40, 75, 99, 0.06)); }
+
+/* Filtre/aksiyon serisi (Musteriler + Raporlar) */
+.customer-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.customer-filters select {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* 360 profil anahtar/deger listesi */
+.detail-list { display: grid; gap: 8px; }
+.detail-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.detail-list > div:last-child { border-bottom: none; }
+.detail-list span { color: var(--muted); font-size: 0.85rem; }
+.detail-list strong { text-align: right; font-size: 0.9rem; }
+
+/* Zaman cizgisi (temas gecmisi + konusma/olay akisi) */
+.timeline { display: grid; gap: 12px; }
+.timeline-row { display: flex; gap: 12px; align-items: flex-start; }
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: var(--accent);
+}
+.timeline-dot.in { background: #166534; }
+.timeline-dot.out { background: var(--accent); }
+.timeline-main { min-width: 0; }
+.timeline-main strong { display: block; font-size: 0.9rem; }
+.timeline-main p { margin: 4px 0 0; color: var(--muted); font-size: 0.85rem; }
+
+/* Yalnizca baskida gorunen rapor basligi */
+.print-header { display: none; }
+
+/* Baskida gizlenecekler (nav, butonlar, filtreler zaten .print-hide) */
+@media print {
+  .print-hide, .customer-filters, .theme-toggle { display: none !important; }
+  .print-header {
+    display: block;
+    font-size: 1.15rem;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #333;
+  }
+  .chart-card, .stat-card, .data-table, .timeline-row {
+    page-break-inside: avoid;
+  }
+  .chart-grid { grid-template-columns: 1fr 1fr !important; }
+  /* SVG grafikler ve rozetler renkli bassin */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}

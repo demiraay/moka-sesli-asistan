@@ -3,6 +3,10 @@
     "merchant_id": "M-1001",
     "business_name": "Demiray Kuruyemiş",
     "owner_name": "Mehmet Demiray",
+    "account_manager": "Burak Şahin",
+    "preferred_channel": "whatsapp",
+    "tier": "orta",
+    "marketing_opt_in": 1,
     "sector": "Gıda Perakende",
     "mcc": "5499",
     "city": "İstanbul",
@@ -49,6 +53,10 @@
     "merchant_id": "M-1002",
     "business_name": "Lezzet Lokantası",
     "owner_name": "Hasan Kara",
+    "account_manager": "Burak Şahin",
+    "preferred_channel": "telefon",
+    "tier": "orta",
+    "marketing_opt_in": 1,
     "sector": "Restoran",
     "mcc": "5812",
     "city": "İstanbul",
@@ -88,12 +96,17 @@
     ],
     "status": "active",
     "joined": "2023-08-01",
-    "salutation": "Hasan Bey"
+    "salutation": "Hasan Bey",
+    "notes": "Akşam yoğunluğu yüksek; hafta sonu ciro artıyor."
   },
   {
     "merchant_id": "M-1003",
     "business_name": "Nova Butik",
     "owner_name": "Selin Aydın",
+    "account_manager": "Elif Kaya",
+    "preferred_channel": "email",
+    "tier": "orta",
+    "marketing_opt_in": 1,
     "sector": "Giyim",
     "mcc": "5651",
     "city": "İzmir",
@@ -135,12 +148,17 @@
     ],
     "status": "active",
     "joined": "2023-11-20",
-    "salutation": "Selin Hanım"
+    "salutation": "Selin Hanım",
+    "notes": "Çok kanallı satış: mağaza + sanal POS + ödeme linki."
   },
   {
     "merchant_id": "M-1004",
     "business_name": "Yeşil Market",
     "owner_name": "Osman Yeşil",
+    "account_manager": "Elif Kaya",
+    "preferred_channel": "telefon",
+    "tier": "kurumsal",
+    "marketing_opt_in": 1,
     "sector": "Market",
     "mcc": "5411",
     "city": "Ankara",
@@ -180,12 +198,17 @@
     ],
     "status": "active",
     "joined": "2022-05-14",
-    "salutation": "Osman Bey"
+    "salutation": "Osman Bey",
+    "notes": "Yüksek hacimli market; PRO planında sadık müşteri."
   },
   {
     "merchant_id": "M-1005",
     "business_name": "Kule Pastanesi",
     "owner_name": "Fatma Şen",
+    "account_manager": "Selin Ateş",
+    "preferred_channel": "whatsapp",
+    "tier": "mikro",
+    "marketing_opt_in": 0,
     "sector": "Pastane",
     "mcc": "5462",
     "city": "İstanbul",
@@ -226,12 +249,17 @@
     ],
     "status": "active",
     "joined": "2024-01-09",
-    "salutation": "Fatma Hanım"
+    "salutation": "Fatma Hanım",
+    "notes": "Butik pastane; bayram dönemleri pik yapıyor."
   },
   {
     "merchant_id": "M-1006",
     "business_name": "Efe Elektronik",
     "owner_name": "Efe Doğan",
+    "account_manager": "Elif Kaya",
+    "preferred_channel": "email",
+    "tier": "orta",
+    "marketing_opt_in": 1,
     "sector": "Elektronik",
     "mcc": "5732",
     "city": "Bursa",
@@ -272,12 +300,17 @@
     ],
     "status": "active",
     "joined": "2023-02-27",
-    "salutation": "Efe Bey"
+    "salutation": "Efe Bey",
+    "notes": "Elektronik perakende; taksitli işlem oranı yüksek."
   },
   {
     "merchant_id": "M-1007",
     "business_name": "Yıldız Cafe",
     "owner_name": "Ayşe Yıldız",
+    "account_manager": "Deniz Yılmaz",
+    "preferred_channel": "telefon",
+    "tier": "mikro",
+    "marketing_opt_in": 1,
     "sector": "Kafe",
     "mcc": "5814",
     "city": "İstanbul",
@@ -324,6 +357,10 @@
     "merchant_id": "M-1008",
     "business_name": "Mavi Eczane Kozmetik",
     "owner_name": "Zeynep Mavi",
+    "account_manager": "Burak Şahin",
+    "preferred_channel": "whatsapp",
+    "tier": "orta",
+    "marketing_opt_in": 1,
     "sector": "Kozmetik",
     "mcc": "5977",
     "city": "İstanbul",
@@ -365,12 +402,17 @@
     ],
     "status": "active",
     "joined": "2022-10-03",
-    "salutation": "Zeynep Hanım"
+    "salutation": "Zeynep Hanım",
+    "notes": "Kozmetik + eczane; online kanalı büyüyor."
   },
   {
     "merchant_id": "M-1009",
     "business_name": "Şık Adım Ayakkabı",
     "owner_name": "Kemal Şık",
+    "account_manager": "Deniz Yılmaz",
+    "preferred_channel": "telefon",
+    "tier": "mikro",
+    "marketing_opt_in": 0,
     "sector": "Ayakkabı",
     "mcc": "5661",
     "city": "Ankara",
@@ -408,7 +450,7 @@
         "volume": 0
       }
     ],
-    "status": "active",
+    "status": "askıda",
     "joined": "2023-09-11",
     "notes": "Temmuz'da hiç işlem yok — cihaz kapalı olabilir.",
     "salutation": "Kemal Bey"
@@ -417,6 +459,10 @@
     "merchant_id": "M-1010",
     "business_name": "Deniz Balıkçısı",
     "owner_name": "Deniz Acar",
+    "account_manager": "Burak Şahin",
+    "preferred_channel": "telefon",
+    "tier": "orta",
+    "marketing_opt_in": 1,
     "sector": "Balıkçı",
     "mcc": "5422",
     "city": "İzmir",
@@ -456,12 +502,17 @@
     ],
     "status": "active",
     "joined": "2024-02-19",
-    "salutation": "Deniz Bey"
+    "salutation": "Deniz Bey",
+    "notes": "Balıkçı; sabah erken saatlerde yoğun."
   },
   {
     "merchant_id": "M-1011",
     "business_name": "Kalem Kırtasiye",
     "owner_name": "Murat Kalem",
+    "account_manager": "Selin Ateş",
+    "preferred_channel": "whatsapp",
+    "tier": "mikro",
+    "marketing_opt_in": 1,
     "sector": "Kırtasiye",
     "mcc": "5943",
     "city": "İstanbul",
@@ -501,12 +552,17 @@
     ],
     "status": "active",
     "joined": "2024-06-30",
-    "salutation": "Murat Bey"
+    "salutation": "Murat Bey",
+    "notes": "Kırtasiye; okul dönemi başında ciro artıyor."
   },
   {
     "merchant_id": "M-1012",
     "business_name": "Usta Berber",
     "owner_name": "İbrahim Usta",
+    "account_manager": "Deniz Yılmaz",
+    "preferred_channel": "telefon",
+    "tier": "mikro",
+    "marketing_opt_in": 0,
     "sector": "Berber",
     "mcc": "7230",
     "city": "İstanbul",
@@ -553,6 +609,10 @@
     "merchant_id": "M-1013",
     "business_name": "Petek Pet Shop",
     "owner_name": "Elif Petek",
+    "account_manager": "Selin Ateş",
+    "preferred_channel": "whatsapp",
+    "tier": "mikro",
+    "marketing_opt_in": 1,
     "sector": "Pet Shop",
     "mcc": "5995",
     "city": "Antalya",
@@ -593,12 +653,17 @@
     ],
     "status": "active",
     "joined": "2024-04-22",
-    "salutation": "Elif Hanım"
+    "salutation": "Elif Hanım",
+    "notes": "Pet shop; sadık müşteri kitlesi, istikrarlı ciro."
   },
   {
     "merchant_id": "M-1014",
     "business_name": "Gonca Çiçekçilik",
     "owner_name": "Gonca Demir",
+    "account_manager": "Selin Ateş",
+    "preferred_channel": "email",
+    "tier": "mikro",
+    "marketing_opt_in": 1,
     "sector": "Çiçekçi",
     "mcc": "5992",
     "city": "İstanbul",
@@ -639,12 +704,17 @@
     ],
     "status": "active",
     "joined": "2023-04-08",
-    "salutation": "Gonca Hanım"
+    "salutation": "Gonca Hanım",
+    "notes": "Çiçekçi; özel gün dönemlerinde sanal POS kullanımı artıyor."
   },
   {
     "merchant_id": "M-1015",
     "business_name": "Taze Manav",
     "owner_name": "Recep Taze",
+    "account_manager": "Deniz Yılmaz",
+    "preferred_channel": "telefon",
+    "tier": "mikro",
+    "marketing_opt_in": 0,
     "sector": "Manav",
     "mcc": "5411",
     "city": "İstanbul",
@@ -654,7 +724,7 @@
     "products": [
       "fiziksel_pos"
     ],
-    "commission_plan_id": "PLAN-STD",
+    "commission_plan_id": "PLAN-RET",
     "iban_masked": "TR** **** **** **** **39 07",
     "monthly_volume_try": [
       {
@@ -682,15 +752,19 @@
         "volume": 4000
       }
     ],
-    "status": "active",
+    "status": "pasif",
     "joined": "2024-07-17",
-    "notes": "Hacim düşüşü — dükkanı taşımış olabilir.",
+    "notes": "Hacim düşüşü — dükkanı taşımış olabilir. Tutundurma planına alındı.",
     "salutation": "Recep Bey"
   },
   {
     "merchant_id": "M-1016",
     "business_name": "Oto Yıkama 34",
     "owner_name": "Serkan Aksoy",
+    "account_manager": "Selin Ateş",
+    "preferred_channel": "whatsapp",
+    "tier": "mikro",
+    "marketing_opt_in": 1,
     "sector": "Oto Yıkama",
     "mcc": "7542",
     "city": "İstanbul",
@@ -730,12 +804,17 @@
     ],
     "status": "active",
     "joined": "2024-05-02",
-    "salutation": "Serkan Bey"
+    "salutation": "Serkan Bey",
+    "notes": "Oto yıkama; hafta sonu ağırlıklı işlem."
   },
   {
     "merchant_id": "M-1017",
     "business_name": "Anadolu Tekstil",
     "owner_name": "Yusuf Anadolu",
+    "account_manager": "Elif Kaya",
+    "preferred_channel": "telefon",
+    "tier": "kurumsal",
+    "marketing_opt_in": 1,
     "sector": "Tekstil Toptan",
     "mcc": "5131",
     "city": "Gaziantep",
@@ -776,12 +855,17 @@
     ],
     "status": "active",
     "joined": "2022-03-18",
-    "salutation": "Yusuf Bey"
+    "salutation": "Yusuf Bey",
+    "notes": "Tekstil toptan; en yüksek hacimli hesaplardan biri."
   },
   {
     "merchant_id": "M-1018",
     "business_name": "Simit Sarayı Şubesi Perapalas",
     "owner_name": "Ahmet Saray",
+    "account_manager": "Deniz Yılmaz",
+    "preferred_channel": "whatsapp",
+    "tier": "mikro",
+    "marketing_opt_in": 1,
     "sector": "Fırın & Unlu Mamüller",
     "mcc": "5462",
     "city": "İstanbul",
@@ -821,6 +905,7 @@
     ],
     "status": "active",
     "joined": "2023-10-26",
-    "salutation": "Ahmet Bey"
+    "salutation": "Ahmet Bey",
+    "notes": "Fırın şubesi; gün içi sabit işlem trafiği."
   }
 ]
