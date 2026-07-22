@@ -202,11 +202,21 @@ sürümlenmiş şema göçleri ile); `scripts/seed_demo_data.py` örnek kümeyi 
 | Tablo | İçerik |
 | --- | --- |
 | merchants | 18 üye işyeri: sektör, ürünler, komisyon planı, altı aylık ciro serisi |
-| transactions | İşlem kayıtları: tutar, komisyon, kart son dört hane, durum, hakediş grubu |
-| settlements | Hakediş grupları: brüt/net tutar, ödeme zamanı, durum |
+| transactions | 332 işlem kaydı: tutar, komisyon, kart son dört hane, durum, hakediş grubu |
+| settlements | 82 hakediş grubu: brüt/net tutar, ödeme zamanı, durum |
 | pos_devices | Terminal envanteri: model, durum, son bağlantı |
 | commission_plans | Plan tanımları ve geri kazanım kampanyası |
 | support_kb | Arıza giderme adımları ve sık sorulan işlemler |
+
+Veri kümesi 18 işyerinin tamamını kapsar: her aktif işyerinin son yedi gününde
+sektörüne uygun fiş tutarlarıyla (fırında 30–300 TL, tekstil toptancısında
+4–45 bin TL) işlem ve hakediş kayıtları bulunur; komisyonlar işyerinin kendi
+planının oranıyla hesaplanmıştır. Aralara serpiştirilmiş iade/iptal işlemleri
+ve sanal POS / ödeme linki kanalından geçen tahsilatlar da temsil edilir.
+Hacmi düşen dört işyeri (proaktif geri kazanım senaryosunun konusu) bilinçli
+olarak yalnızca eski tarihli kayıtlar taşır; böylece "uyuyan işletme" anlatısı
+işlem geçmişiyle tutarlıdır. Hangi işyeri seçilirse seçilsin asistan
+"veri bulunamadı" yerine gerçek kayıtlarla yanıt verir.
 
 Kayıtlardaki tarihler göreli belirteçlerle (`D-1T16:40:00`) saklanır; ham
 belirteç ve çözülmüş zaman damgası ayrı sütunlarda tutulur, böylece sorgular
