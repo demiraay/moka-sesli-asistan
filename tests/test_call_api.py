@@ -276,3 +276,48 @@ def test_call_turn_stream_requires_call_id_and_text(client):
     http, _ = client
     assert http.post("/call/turn/stream", data={"text": "merhaba"}).status_code == 400
     assert http.post("/call/turn/stream", data={"call_id": "x"}).status_code == 400
+
+
+@pytest.mark.skipif(not AGENT_LOOP_ENABLED, reason="akış agent loop yolunda")
+def test_call_turn_stream_delivers_audio_segments(client):
+    """Ses cumle cumle 'audio' olaylariyla gelmeli; done tek parca ses tasimamali."""
+    http, orch = client
+    start = http.post("/call/start", json={"mode": "inbound", "merchant_id": "M-1001"}).get_json()
+    orch.llm_client.push("get_settlement_status", {"period": "latest"})
+
+    response = http.post("/call/turn/stream",
+                         data={"call_id": start["call_id"], "text": "Param ne zaman yatacak?"})
+    events = _parse_sse(response.get_data(as_text=True))
+
+    audio_events = [payload for name, payload in events if name == "audio"]
+    done = next(payload for name, payload in events if name == "done")
+
+    assert audio_events, "en az bir ses parcasi akmali"
+    assert done["audio_segments"] == len(audio_events)
+    assert done["audio_url"] is None, "parcali ses varken done tek parca tasimaz"
+    assert [payload["seq"] for payload in audio_events] == list(range(1, len(audio_events) + 1))
+    for payload in audio_events:
+        assert payload["url"].startswith("/call/audio/")
+    # Parcalarin metni nihai cevabi kaplamali (bosluk farki tolere edilir).
+    assert "".join(p["text"] for p in audio_events).replace(" ", "") == \
+        done["reply_text"].replace(" ", "")
+
+
+def test_split_ready_sentences_keeps_numbers_intact():
+    from admin_panel.call_api import _split_ready_sentences
+
+    # Sayidaki nokta ("45.230") cumle sonu sayilmaz: noktadan sonra bosluk yok.
+    ready, rest = _split_ready_sentences(
+        "Dünkü hakedişiniz net 45.230 TL olarak yatacak. Başka sorunuz var mı")
+    assert ready == ["Dünkü hakedişiniz net 45.230 TL olarak yatacak."]
+    assert rest == "Başka sorunuz var mı"
+
+    # Bitmemis kuyruk oldugu gibi geri doner.
+    ready, rest = _split_ready_sentences("Henüz cümle bitmedi")
+    assert ready == []
+    assert rest == "Henüz cümle bitmedi"
+
+    # Cok kisa parca (min_chars alti) sonraki cumleyle birlesir.
+    ready, rest = _split_ready_sentences("Evet. Ödemeniz yarın sabah hesabınızda olacak. ")
+    assert ready == ["Evet. Ödemeniz yarın sabah hesabınızda olacak."]
+    assert rest == ""

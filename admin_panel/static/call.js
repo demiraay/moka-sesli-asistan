@@ -203,7 +203,54 @@
     agentAudio.play().catch(function () { agentAudio = null; onFinished(); });
   }
 
+  // Akan cevapta ses cumle cumle gelir ('audio' olaylari). Kuyruk sirayla
+  // calar; 'done' gelince finishAudioQueue son parcanin bitisine kancalanir.
+  let audioQueue = [];
+  let audioQueueDone = false;
+  let audioQueueFinish = null;
+  let audioSegments = 0;   // bu turda kac parca ses geldi (0 = eski tek parca yol)
+  let turnAbort = null;    // suren akis istegi; barge-in'de iptal edilir
+
+  function resetAudioQueue() {
+    audioQueue = [];
+    audioQueueDone = false;
+    audioQueueFinish = null;
+  }
+
+  function enqueueAgentAudio(url) {
+    audioQueue.push(url);
+    if (!agentAudio) playNextSegment();
+  }
+
+  function playNextSegment() {
+    const next = audioQueue.shift();
+    if (next === undefined) {
+      // kuyruk bos: ya siradaki cumle henuz sentezleniyor ya da tur bitti
+      if (audioQueueDone && audioQueueFinish) {
+        const cb = audioQueueFinish;
+        audioQueueFinish = null;
+        cb();
+      }
+      return;
+    }
+    setState("speaking");
+    agentAudio = new Audio(next);
+    agentAudio.onended = function () { agentAudio = null; playNextSegment(); };
+    agentAudio.onerror = function () { agentAudio = null; playNextSegment(); };
+    agentAudio.play().catch(function () { agentAudio = null; playNextSegment(); });
+  }
+
+  function finishAudioQueue(onFinished) {
+    audioQueueDone = true;
+    audioQueueFinish = onFinished;
+    if (!agentAudio && audioQueue.length === 0) {
+      audioQueueFinish = null;
+      onFinished();
+    }
+  }
+
   function stopAgentAudio() {
+    resetAudioQueue();
     if (agentAudio) {
       agentAudio.onended = null;
       agentAudio.pause();
@@ -338,6 +385,9 @@
   }
 
   function interruptAgent() {
+    // Akis suruyorsa iptal et: sunucu kalan cumleleri uretmeyi/seslendirmeyi
+    // birakir, sadece tarayicidaki ses susmus olmaz.
+    if (turnAbort) { turnAbort.abort(); turnAbort = null; }
     stopAgentAudio();
     addSysNote("— söze girildi —");
     setState("listening");
@@ -382,13 +432,26 @@
   // hicbir sey sonradan degismez (bkz. orchestrator._stream_polished).
   async function streamTurn(form, opts) {
     opts = opts || {};
-    const response = await fetch("/call/turn/stream", { method: "POST", body: form });
+    resetAudioQueue();
+    audioSegments = 0;
+    turnAbort = new AbortController();
+    let response;
+    try {
+      response = await fetch("/call/turn/stream", {
+        method: "POST", body: form, signal: turnAbort.signal,
+      });
+    } catch (err) {
+      turnAbort = null;
+      if (err.name === "AbortError") return;  // soze girildi — sessizce cik
+      throw err;
+    }
     // Sessizlik/hata durumunda sunucu duz JSON doner (akis baslamaz).
     if (!(response.headers.get("content-type") || "").includes("text/event-stream")) {
+      turnAbort = null;
       handleTurnResponse(await response.json(), opts);
       return;
     }
-    if (!response.ok || !response.body) throw new Error("stream basarisiz");
+    if (!response.ok || !response.body) { turnAbort = null; throw new Error("stream basarisiz"); }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -405,50 +468,69 @@
       return bubble;
     }
 
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+    try {
+      for (;;) {
+        let value, done;
+        try {
+          ({ value, done } = await reader.read());
+        } catch (err) {
+          if (err.name === "AbortError") {
+            // barge-in: yazilani koru, durumu interruptAgent yonetti
+            if (bubble) bubble.classList.remove("streaming");
+            return;
+          }
+          throw err;
+        }
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
 
-      // SSE olaylari bos satirla ayrilir.
-      const blocks = buffer.split("\n\n");
-      buffer = blocks.pop() || "";
+        // SSE olaylari bos satirla ayrilir.
+        const blocks = buffer.split("\n\n");
+        buffer = blocks.pop() || "";
 
-      for (const block of blocks) {
-        let name = null, payload = null;
-        for (const line of block.split("\n")) {
-          if (line.startsWith("event:")) name = line.slice(6).trim();
-          else if (line.startsWith("data:")) {
-            try { payload = JSON.parse(line.slice(5).trim()); } catch (e) { payload = null; }
+        for (const block of blocks) {
+          let name = null, payload = null;
+          for (const line of block.split("\n")) {
+            if (line.startsWith("event:")) name = line.slice(6).trim();
+            else if (line.startsWith("data:")) {
+              try { payload = JSON.parse(line.slice(5).trim()); } catch (e) { payload = null; }
+            }
+          }
+          if (!name || !payload) continue;
+
+          if (name === "tool") {
+            // Planlama uzun surebilir; kullanici sessizce beklemesin.
+            const label = (cfg.toolLabels && cfg.toolLabels[payload.name]) || payload.name;
+            el.stateLabel.textContent = label + "…";
+          } else if (name === "delta") {
+            if (state === "ended") return;
+            if (!bubble) setState("speaking");   // yazmaya basladik
+            streamed += payload.text;
+            ensureBubble().textContent = streamed;
+            el.transcript.scrollTop = el.transcript.scrollHeight;
+          } else if (name === "audio") {
+            // Cumle sesi hazir: kuyruga ekle, ilk parca hemen calmaya baslar.
+            if (state === "ended") return;
+            audioSegments += 1;
+            enqueueAgentAudio(payload.url);
+          } else if (name === "error") {
+            addSysNote(payload.detail || "Cevap üretilemedi.");
+            setState("listening");
+            return;
+          } else if (name === "done") {
+            if (bubble) bubble.remove();       // meta satirli nihai balonla degistir
+            handleTurnResponse(payload, { skipUserBubble: opts.skipUserBubble });
+            return;
           }
         }
-        if (!name || !payload) continue;
-
-        if (name === "tool") {
-          // Planlama uzun surebilir; kullanici sessizce beklemesin.
-          const label = (cfg.toolLabels && cfg.toolLabels[payload.name]) || payload.name;
-          el.stateLabel.textContent = label + "…";
-        } else if (name === "delta") {
-          if (state === "ended") return;
-          if (!bubble) setState("speaking");   // yazmaya basladik
-          streamed += payload.text;
-          ensureBubble().textContent = streamed;
-          el.transcript.scrollTop = el.transcript.scrollHeight;
-        } else if (name === "error") {
-          addSysNote(payload.detail || "Cevap üretilemedi.");
-          setState("listening");
-          return;
-        } else if (name === "done") {
-          if (bubble) bubble.remove();       // meta satirli nihai balonla degistir
-          handleTurnResponse(payload, { skipUserBubble: opts.skipUserBubble });
-          return;
-        }
       }
-    }
 
-    // Akis 'done' gelmeden koptuysa yazilani koru.
-    if (bubble) bubble.classList.remove("streaming");
-    setState("listening");
+      // Akis 'done' gelmeden koptuysa yazilani koru.
+      if (bubble) bubble.classList.remove("streaming");
+      setState("listening");
+    } finally {
+      turnAbort = null;
+    }
   }
 
   function handleTurnResponse(data, opts) {
@@ -479,13 +561,19 @@
       el.handoffNote.hidden = false;
     }
 
-    playAgentAudio(data.audio_url, function () {
+    const finishTurn = function () {
       if (handoffDone) {
         endCall("handoff");
       } else {
         setState("listening");
       }
-    });
+    };
+    if (audioSegments > 0) {
+      // Ses zaten cumle cumle calindi/caliyor; son parca bitince tur kapanir.
+      finishAudioQueue(finishTurn);
+    } else {
+      playAgentAudio(data.audio_url, finishTurn);
+    }
   }
 
   // --- cagri yasam dongusu ---
@@ -550,6 +638,7 @@
 
   async function endCall(outcome) {
     stopVadLoop();
+    if (turnAbort) { turnAbort.abort(); turnAbort = null; }
     stopAgentAudio();
     if (recorder && recorder.state === "recording") {
       recorder.onstop = null;

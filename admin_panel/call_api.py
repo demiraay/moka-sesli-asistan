@@ -14,6 +14,7 @@ test ve otomatik testler icin STT atlanir).
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from pathlib import Path
@@ -30,6 +31,33 @@ from core.voice import (CompositeTranscriber, ElevenLabsSynthesizer,
 def _sse(event: str, payload: dict) -> str:
     """Tek bir Server-Sent Event satiri."""
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+# Cumle siniri: noktalama + bosluk. Bosluk sarti sayilarin icindeki
+# noktalari ("45.230", "10.00") cumle sonu sanmayi engeller.
+_SENTENCE_END_RE = re.compile(r"[.!?…]+\s+")
+
+
+def _split_ready_sentences(buffer: str, min_chars: int = 12) -> tuple[list[str], str]:
+    """Tamamlanmis cumleleri ayirir; henuz bitmemis kuyruk geri doner.
+
+    min_chars, "Sn." gibi kisaltmalarin ve tek kelimelik parcalarin ayri
+    TTS cagrisina donusmesini engeller: sinir ancak o uzunluktan sonra kabul
+    edilir, kisa parca bir sonraki cumleyle birlesir.
+    """
+    ready: list[str] = []
+    while True:
+        cut = None
+        for match in _SENTENCE_END_RE.finditer(buffer):
+            if match.end() >= min_chars:
+                cut = match.end()
+                break
+        if cut is None:
+            return ready, buffer
+        piece = buffer[:cut].strip()
+        if piece:
+            ready.append(piece)
+        buffer = buffer[cut:]
 
 
 def register_call_routes(app, orchestrator) -> None:
@@ -205,9 +233,11 @@ def register_call_routes(app, orchestrator) -> None:
     def call_turn_stream():
         """/call/turn'un AKAN surumu (Server-Sent Events).
 
-        Cevap tek blok halinde degil, uretildikce yazilir. Ses sentezi metin
-        TAMAMLANDIKTAN sonra yapilir (TTS tam metne ihtiyac duyar), bu yuzden
-        'done' olayinda gelir.
+        Metin uretildikce yazilir; ses de CUMLE CUMLE sentezlenip 'audio'
+        olaylariyla akitilir. Ilk cumle tamamlanir tamamlanmaz TTS'e girer:
+        kullanicinin duydugu gecikme "tum metin + tum sentez" yerine
+        "ilk cumle + ilk sentez"e iner. Hic segment uretilemezse (TTS
+        yapilandirilmamis/hatali) 'done' olayi eskisi gibi tek parca ses tasir.
         """
         call_id = request.form.get("call_id") or request.args.get("call_id")
         if not call_id:
@@ -224,11 +254,33 @@ def register_call_routes(app, orchestrator) -> None:
         def events():
             started = time.perf_counter()
             turn = {}
+            voice_id = call_voice_ids.get(call_id)
+            sentence_buf = ""
+            segments = 0
+            tts_ms = 0
+
+            def synth_segment(text):
+                nonlocal segments, tts_ms
+                url, ms = _synthesize(text, f"seg-{call_id}", voice_id)
+                tts_ms += ms
+                if url:
+                    segments += 1
+                    return _sse("audio", {"url": url, "seq": segments, "text": text})
+                return None
+
             try:
                 for kind, payload in orchestrator.process_turn_stream(
                         transcript, user_id=call_id, channel="voice"):
                     if kind == "delta":
                         yield _sse("delta", {"text": payload})
+                        # Cumle tamamlandiysa hemen seslendir: LLM devamini
+                        # uretirken ilk cumle tarayicida calmaya baslar.
+                        sentence_buf += payload
+                        ready, sentence_buf = _split_ready_sentences(sentence_buf)
+                        for sentence in ready:
+                            event = synth_segment(sentence)
+                            if event:
+                                yield event
                     elif kind == "tool":
                         yield _sse("tool", {"name": payload})
                     else:
@@ -238,16 +290,26 @@ def register_call_routes(app, orchestrator) -> None:
                 yield _sse("error", {"detail": str(error)})
                 return
 
-            llm_ms = int((time.perf_counter() - started) * 1000)
+            tail = sentence_buf.strip()
+            if tail:
+                event = synth_segment(tail)
+                if event:
+                    yield event
+
+            llm_ms = int((time.perf_counter() - started) * 1000) - tts_ms
             reply_text = turn.get("agent_response", "")
-            audio_url, tts_ms = _synthesize(reply_text, f"reply-{call_id}",
-                                            call_voice_ids.get(call_id))
+            if segments:
+                audio_url = None  # ses 'audio' olaylariyla parcali gitti
+            else:
+                audio_url, tts_ms = _synthesize(reply_text, f"reply-{call_id}",
+                                                voice_id)
             decision = turn.get("router_decision") or {}
             yield _sse("done", {
                 "transcript": transcript,
                 "stt_engine": stt_engine,
                 "reply_text": reply_text,
                 "audio_url": audio_url,
+                "audio_segments": segments,
                 "tool": decision.get("tool"),
                 "tools": [item.get("name") for item in decision.get("tools", [])],
                 "iterations": decision.get("iterations", 1),
