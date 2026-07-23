@@ -53,7 +53,7 @@
       {% endif %}
 
       <header class="call-header">
-        <div class="brand">Moka <span>Sesli Asistan</span></div>
+        <div class="brand"><img src="{{ url_for('static', filename='mokaunited-logo.svg') }}" alt="Moka United" class="brand-logo">Moka <span>Sesli Asistan</span></div>
         {% if support_line %}
         <div class="line-chip" title="Moka Destek Hattı">Destek Hattı &nbsp;{{ support_line }}</div>
         {% endif %}

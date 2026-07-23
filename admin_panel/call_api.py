@@ -213,6 +213,7 @@ def register_call_routes(app, orchestrator) -> None:
             "transcript": transcript,
             "reply_text": reply_text,
             "audio_url": audio_url,
+            "facts": (turn.get("context") or {}).get("message_facts") or [],
             "tool": decision.get("tool"),
             # Cok adimli loop telemetrisi: tek turda birden fazla arac
             # calisabilir. Gecikme regresyonu burada gorunur.
@@ -310,6 +311,9 @@ def register_call_routes(app, orchestrator) -> None:
                 "reply_text": reply_text,
                 "audio_url": audio_url,
                 "audio_segments": segments,
+                # Arac katmanindan gelen ham bulgular: transkriptte "kanit"
+                # olarak gosterilir (cevap gercek veriden geliyor iddiasi).
+                "facts": (turn.get("context") or {}).get("message_facts") or [],
                 "tool": decision.get("tool"),
                 "tools": [item.get("name") for item in decision.get("tools", [])],
                 "iterations": decision.get("iterations", 1),

@@ -71,6 +71,10 @@
   let handoffDone = false;
   let pendingUpload = false;
   let previewAudio = null;  // ses onizlemesi — arama baslarken durdurulmali
+  let agentAnalyser = null;   // Ada'nin sesi icin analyser (orb animasyonu)
+  let orbRaf = null;          // sesle nabiz atan kure dongusu
+  let usedToolLabels = [];    // cagri boyunca calisan araclar (ozet karti icin)
+  let turnCount = 0;
 
   function stopPreview() {
     if (previewAudio) {
@@ -120,9 +124,115 @@
     el.wave.hidden = next !== "speaking";
     el.stateLabel.textContent = STATE_LABELS[next] || "";
     el.btnInterrupt.hidden = next !== "speaking" || !stream;
+    if (next !== "thinking") hideTyping();
+  }
+
+  // --- sesle nabiz atan kure ---------------------------------------------
+  //
+  // Dinlerken mikrofonun, konusurken Ada'nin ses siddeti kureyi olceklendirir.
+  // CSS animasyonlariyla catismamak icin transform avatar-wrap'e uygulanir.
+  function ensureAudioCtx() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(function () {});
+    return audioCtx;
+  }
+
+  function wireAgentAudio(audio) {
+    // Ada'nin sesini analyser'dan gecir: kure gercek sesle oynasin.
+    try {
+      const ctx = ensureAudioCtx();
+      if (!agentAnalyser) {
+        agentAnalyser = ctx.createAnalyser();
+        agentAnalyser.fftSize = 512;
+        agentAnalyser.connect(ctx.destination);
+      }
+      const source = ctx.createMediaElementSource(audio);
+      source.connect(agentAnalyser);
+    } catch (e) { /* baglanamazsa ses normal calmaya devam eder */ }
+  }
+
+  function analyserRms(node) {
+    if (!node) return 0;
+    const data = new Uint8Array(node.fftSize);
+    node.getByteTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) {
+      const v = (data[i] - 128) / 128;
+      sum += v * v;
+    }
+    return Math.sqrt(sum / data.length);
+  }
+
+  let orbLevel = 0;
+  function orbTick() {
+    let target = 0;
+    if (state === "speaking") target = Math.min(analyserRms(agentAnalyser) * 6, 1);
+    else if (state === "listening") target = Math.min(analyserRms(analyser) * 8, 1);
+    // yumusatma: ani ziplamalar yerine nefes gibi
+    orbLevel += (target - orbLevel) * 0.25;
+    if (el.avatar) {
+      el.avatar.style.transform = "scale(" + (1 + orbLevel * 0.16).toFixed(4) + ")";
+      el.avatar.style.filter = "brightness(" + (1 + orbLevel * 0.5).toFixed(3) + ")";
+    }
+    orbRaf = requestAnimationFrame(orbTick);
+  }
+  function startOrb() { if (!orbRaf) orbRaf = requestAnimationFrame(orbTick); }
+  function stopOrb() {
+    if (orbRaf) { cancelAnimationFrame(orbRaf); orbRaf = null; }
+    if (el.avatar) { el.avatar.style.transform = ""; el.avatar.style.filter = ""; }
+  }
+
+  // --- "dusunuyor" gostergesi ---------------------------------------------
+  //
+  // Turlar arasindaki sessiz bosluk: transkriptte uc nokta animasyonu +
+  // calisan aracin adi ("hakediş sorgulanıyor…"). Olu sessizlik yerine
+  // sistemin calistigi gorunur.
+  let typingBubble = null;
+  function showTyping() {
+    if (typingBubble) return;
+    typingBubble = document.createElement("div");
+    typingBubble.className = "bubble agent typing";
+    typingBubble.innerHTML =
+      '<span class="typing-dots"><i></i><i></i><i></i></span>' +
+      '<span class="typing-label" id="typing-label"></span>';
+    el.transcript.appendChild(typingBubble);
+    el.transcript.scrollTop = el.transcript.scrollHeight;
+  }
+  function setTypingLabel(text) {
+    if (!typingBubble) return;
+    const label = typingBubble.querySelector(".typing-label");
+    if (label) label.textContent = text;
+  }
+  function hideTyping() {
+    if (typingBubble) { typingBubble.remove(); typingBubble = null; }
   }
 
   // --- transkript ---
+
+  // Balon icin "tekrar dinle": parcalar sirayla calinir (akan turda cumle
+  // basina bir mp3 uretilir). Canli konusmayla cakismasin diye tek calar var.
+  let replayAudio = null;
+  function stopReplay() {
+    if (replayAudio) { replayAudio.pause(); replayAudio = null; }
+    document.querySelectorAll(".replay-btn.playing").forEach(function (b) {
+      b.classList.remove("playing");
+    });
+  }
+  function replayUrls(urls, btn) {
+    if (replayAudio) { stopReplay(); return; }  // ikinci tik = durdur
+    let index = 0;
+    btn.classList.add("playing");
+    function next() {
+      if (index >= urls.length) { stopReplay(); return; }
+      replayAudio = new Audio(urls[index]);
+      index += 1;
+      replayAudio.onended = next;
+      replayAudio.onerror = next;
+      replayAudio.play().catch(stopReplay);
+    }
+    next();
+  }
+
   function addBubble(role, text, meta) {
     const bubble = document.createElement("div");
     bubble.className = "bubble " + role;
@@ -130,8 +240,10 @@
     const chain = (meta && meta.tools && meta.tools.length)
       ? meta.tools
       : (meta && meta.tool ? [meta.tool] : []);
+    const facts = (meta && meta.facts) || [];
+    const audioUrls = (meta && meta.audioUrls) || [];
 
-    if (meta && (chain.length || meta.latency)) {
+    if (meta && (chain.length || meta.latency || facts.length || audioUrls.length)) {
       const metaRow = document.createElement("div");
       metaRow.className = "meta";
 
@@ -166,7 +278,47 @@
           "ms · tts " + meta.latency.tts + "ms";
         metaRow.appendChild(lat);
       }
-      bubble.appendChild(metaRow);
+
+      // Kanit: arac katmanindan donen ham bulgular. Rozet tiklaninca acilir —
+      // "cevaplar gercek veriden geliyor" iddiasinin tek tikla ispati.
+      if (facts.length) {
+        const proofBtn = document.createElement("button");
+        proofBtn.type = "button";
+        proofBtn.className = "proof-btn";
+        proofBtn.textContent = "veri";
+        proofBtn.title = "Araç katmanından dönen ham veri";
+        const pop = document.createElement("div");
+        pop.className = "facts-pop";
+        pop.hidden = true;
+        facts.forEach(function (fact) {
+          const row = document.createElement("div");
+          row.className = "fact-row";
+          row.textContent = fact;
+          pop.appendChild(row);
+        });
+        proofBtn.addEventListener("click", function () {
+          pop.hidden = !pop.hidden;
+          proofBtn.classList.toggle("open", !pop.hidden);
+          el.transcript.scrollTop = el.transcript.scrollHeight;
+        });
+        metaRow.appendChild(proofBtn);
+        bubble.appendChild(metaRow);
+        bubble.appendChild(pop);
+      } else {
+        bubble.appendChild(metaRow);
+      }
+
+      // Tekrar dinle: bu turun ses parcalarini sirayla calar.
+      if (audioUrls.length) {
+        const replayBtn = document.createElement("button");
+        replayBtn.type = "button";
+        replayBtn.className = "replay-btn";
+        replayBtn.title = "Bu cevabı tekrar dinle";
+        replayBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>';
+        replayBtn.addEventListener("click", function () { replayUrls(audioUrls, replayBtn); });
+        metaRow.appendChild(replayBtn);
+      }
     }
     el.transcript.appendChild(bubble);
     el.transcript.scrollTop = el.transcript.scrollHeight;
@@ -197,6 +349,7 @@
   function playAgentAudio(url, onFinished) {
     if (!url) { onFinished(); return; }
     agentAudio = new Audio(url);
+    wireAgentAudio(agentAudio);
     agentAudio.onended = function () { agentAudio = null; onFinished(); };
     agentAudio.onerror = function () { agentAudio = null; onFinished(); };
     setState("speaking");
@@ -235,6 +388,7 @@
     }
     setState("speaking");
     agentAudio = new Audio(next);
+    wireAgentAudio(agentAudio);
     agentAudio.onended = function () { agentAudio = null; playNextSegment(); };
     agentAudio.onerror = function () { agentAudio = null; playNextSegment(); };
     agentAudio.play().catch(function () { agentAudio = null; playNextSegment(); });
@@ -430,10 +584,14 @@
   // Cevap tek blok halinde degil, uretildikce yazilir. Sunucu tarafi metni
   // yalnizca "kararli" hale geldikce yolluyor, bu yuzden ekrana yazilan
   // hicbir sey sonradan degismez (bkz. orchestrator._stream_polished).
+  let turnAudioUrls = [];  // bu turun ses parcalari (balonda "tekrar dinle")
+
   async function streamTurn(form, opts) {
     opts = opts || {};
     resetAudioQueue();
     audioSegments = 0;
+    turnAudioUrls = [];
+    showTyping();
     turnAbort = new AbortController();
     let response;
     try {
@@ -502,6 +660,7 @@
             // Planlama uzun surebilir; kullanici sessizce beklemesin.
             const label = (cfg.toolLabels && cfg.toolLabels[payload.name]) || payload.name;
             el.stateLabel.textContent = label + "…";
+            setTypingLabel(label + "…");
           } else if (name === "delta") {
             if (state === "ended") return;
             if (!bubble) setState("speaking");   // yazmaya basladik
@@ -512,6 +671,7 @@
             // Cumle sesi hazir: kuyruga ekle, ilk parca hemen calmaya baslar.
             if (state === "ended") return;
             audioSegments += 1;
+            turnAudioUrls.push(payload.url);
             enqueueAgentAudio(payload.url);
           } else if (name === "error") {
             addSysNote(payload.detail || "Cevap üretilemedi.");
@@ -554,7 +714,18 @@
       tools: data.tools,
       iterations: data.iterations,
       latency: data.latency_ms,
+      facts: data.facts,
+      audioUrls: turnAudioUrls.length ? turnAudioUrls.slice()
+                                      : (data.audio_url ? [data.audio_url] : []),
     });
+
+    // Ozet karti icin cagri telemetrisi
+    turnCount += 1;
+    ((data.tools && data.tools.length) ? data.tools : (data.tool ? [data.tool] : []))
+      .forEach(function (name) {
+        const label = (cfg.toolLabels && cfg.toolLabels[name]) || name;
+        if (usedToolLabels.indexOf(label) === -1) usedToolLabels.push(label);
+      });
 
     if (data.handoff && !handoffDone) {
       handoffDone = true;
@@ -626,7 +797,13 @@
 
       if (el.phoneScreen) el.phoneScreen.classList.add("in-call");
       phoneSetTimer("00:00");
-      addBubble("agent", data.reply_text, { latency: data.latency_ms });
+      usedToolLabels = [];
+      turnCount = 0;
+      startOrb();
+      addBubble("agent", data.reply_text, {
+        latency: data.latency_ms,
+        audioUrls: data.audio_url ? [data.audio_url] : [],
+      });
       playAgentAudio(data.audio_url, function () { setState("listening"); });
     } catch (err) {
       addSysNote("Arama başlatılamadı: " + err);
@@ -636,10 +813,55 @@
     }
   }
 
+  // Cagri sonu ozet karti: sure, tur sayisi, calisan araclar, AI ozeti.
+  // Gorusmenin panelde CRM kaydina donustugu, ekrandan ayrilmadan gorunur.
+  function addSummaryCard(summary) {
+    const card = document.createElement("div");
+    card.className = "call-summary glass";
+    const seconds = callStartAt ? Math.floor((Date.now() - callStartAt) / 1000) : 0;
+    const duration =
+      String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+
+    let html = '<div class="cs-title">Çağrı Özeti</div>';
+    html += '<div class="cs-stats">';
+    html += '<span class="cs-stat"><b>' + duration + "</b> süre</span>";
+    html += '<span class="cs-stat"><b>' + turnCount + "</b> tur</span>";
+    html += '<span class="cs-stat"><b>' + usedToolLabels.length + "</b> araç</span>";
+    html += "</div>";
+    card.innerHTML = html;
+
+    if (usedToolLabels.length) {
+      const tools = document.createElement("div");
+      tools.className = "cs-tools";
+      usedToolLabels.forEach(function (label) {
+        const badge = document.createElement("span");
+        badge.className = "tool-badge";
+        badge.textContent = label;
+        tools.appendChild(badge);
+      });
+      card.appendChild(tools);
+    }
+    if (summary) {
+      const text = document.createElement("div");
+      text.className = "cs-summary";
+      text.textContent = summary;
+      card.appendChild(text);
+    }
+    const footer = document.createElement("div");
+    footer.className = "cs-footer";
+    footer.textContent = "✓ Görüşme panele işlendi — müşteri kartında";
+    card.appendChild(footer);
+
+    el.transcript.appendChild(card);
+    el.transcript.scrollTop = el.transcript.scrollHeight;
+  }
+
   async function endCall(outcome) {
     stopVadLoop();
     if (turnAbort) { turnAbort.abort(); turnAbort = null; }
     stopAgentAudio();
+    stopReplay();
+    stopOrb();
     if (recorder && recorder.state === "recording") {
       recorder.onstop = null;
       recorder.stop();
@@ -661,7 +883,7 @@
         body: JSON.stringify({ call_id: callId, mode: cfg.mode, outcome: outcome || "ended" }),
       });
       const data = await resp.json();
-      if (data.summary) addSysNote("Çağrı özeti: " + data.summary);
+      addSummaryCard(data.summary || "");
     } catch (e) { /* sessiz */ }
     // yeni arama icin kurulum panelini geri getir
     setTimeout(function () {
